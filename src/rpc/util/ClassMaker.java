@@ -102,7 +102,7 @@ public class ClassMaker {
             // read annotations
             int requestId = -1;
             RequestTypeId requestTypeIdAnnotation = method.getAnnotation(RequestTypeId.class);
-            if (requestTypeIdAnnotation != null) {
+            if (requestTypeIdAnnotation != null && requestTypeIdAnnotation.value() > 0) {
                 requestId = requestTypeIdAnnotation.value();
             } else {
                 continue;

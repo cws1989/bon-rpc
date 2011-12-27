@@ -14,7 +14,7 @@ import java.lang.annotation.Target;
 public @interface RequestTypeId {
 
     /**
-     * The request type id
+     * The request type id, should start from 1.
      */
     int value();
 }
