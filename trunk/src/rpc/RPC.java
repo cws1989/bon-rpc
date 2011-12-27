@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javassist.CannotCompileException;
@@ -29,35 +30,34 @@ import rpc.util.ClassMaker;
  */
 public class RPC implements RemoteInput {
 
+    private static final Logger LOG = Logger.getLogger(RPC.class.getName());
     protected List<RPCRegistryMethod> localMethodRegistry;
     protected List<RPCRegistryMethod> remoteMethodRegistry;
     protected Map<Class<?>, Integer> registeredLocalClasses;
     protected Map<Class<?>, Integer> registeredRemoteClasses;
-    //
-    protected int localMethodTypeIdMax;
-    protected RPCRegistryMethod[] localMethodMap;
-    protected Map<Class<?>, Object> remoteImplementations;
     // for send function
-    private int requestIdIncrementor;
+    protected AtomicInteger requestIdIncrementor;
     private byte[] sendBuffer;
     //
-    private Generator generator;
-    private Parser parser;
+    protected RPCRegistryMethod[] localMethodMap;
+    protected Map<Class<?>, Object> remoteImplementations;
+    //
+    protected Generator generator;
+    protected Parser parser;
 
-    protected RPC(List<RPCRegistryMethod> localMethodRegistry, List<RPCRegistryMethod> remoteMethodRegistry, Map<Class<?>, Integer> registeredLocalClasses, Map<Class<?>, Integer> registeredRemoteClasses) throws NotFoundException, CannotCompileException, InstantiationException, IllegalAccessException {
+    protected RPC(List<RPCRegistryMethod> localMethodRegistry, List<RPCRegistryMethod> remoteMethodRegistry,
+            Map<Class<?>, Integer> registeredLocalClasses, Map<Class<?>, Integer> registeredRemoteClasses)
+            throws NotFoundException, CannotCompileException, InstantiationException, IllegalAccessException {
         this.localMethodRegistry = localMethodRegistry;
         this.remoteMethodRegistry = remoteMethodRegistry;
         this.registeredLocalClasses = registeredLocalClasses;
         this.registeredRemoteClasses = registeredRemoteClasses;
 
-        this.requestIdIncrementor = 1;
+        this.requestIdIncrementor = new AtomicInteger(0);
         this.sendBuffer = new byte[4];
 
-        initialize();
-    }
-
-    private void initialize() throws NotFoundException, CannotCompileException, InstantiationException, IllegalAccessException {
         // local
+        int localMethodTypeIdMax = 0;
         for (RPCRegistryMethod method : localMethodRegistry) {
             RequestTypeId requestTypeId = method.method.getAnnotation(RequestTypeId.class);
             if (requestTypeId != null && requestTypeId.value() > localMethodTypeIdMax) {
@@ -67,7 +67,7 @@ public class RPC implements RemoteInput {
         localMethodMap = new RPCRegistryMethod[localMethodTypeIdMax + 1];
         for (RPCRegistryMethod method : localMethodRegistry) {
             RequestTypeId requestTypeId = method.method.getAnnotation(RequestTypeId.class);
-            if (requestTypeId == null) {
+            if (requestTypeId == null || requestTypeId.value() < 0) {
                 continue;
             }
 
@@ -96,10 +96,7 @@ public class RPC implements RemoteInput {
                         break;
                     }
                 }
-                Logger.getLogger(RPC.class.getName()).log(Level.SEVERE, "RPC:initialize(): local request type id duplicated, id: {0}, class: {1}, method: {2}", new Object[]{requestTypeId.value(), targetClass.getName(), method.method.getName()});
-                continue;
-            }
-            if (requestTypeId.value() < 0) {
+                LOG.log(Level.SEVERE, "local request type id duplicated, id: {0}, class: {1}, method: {2}", new Object[]{requestTypeId.value(), targetClass.getName(), method.method.getName()});
                 continue;
             }
             localMethodMap[requestTypeId.value()] = method;
@@ -116,7 +113,7 @@ public class RPC implements RemoteInput {
                     continue;
                 }
                 if (requestTypeIdList.indexOf((Integer) requestTypeIdAnnotation.value()) != -1) {
-                    Logger.getLogger(RPC.class.getName()).log(Level.SEVERE, "RPC:initialize(): remote request type id duplicated, id: {0}, class: {1}, method: {2}", new Object[]{requestTypeIdAnnotation.value(), objClass.getName(), method.getName()});
+                    LOG.log(Level.SEVERE, "remote request type id duplicated, id: {0}, class: {1}, method: {2}", new Object[]{requestTypeIdAnnotation.value(), objClass.getName(), method.getName()});
                     continue;
                 }
                 requestTypeIdList.add(requestTypeIdAnnotation.value());
@@ -125,10 +122,11 @@ public class RPC implements RemoteInput {
         }
     }
 
-    protected synchronized Object send(int requestTypeId, Object[] args, boolean withRequestId, boolean respond, boolean blocking, int expiryTime) throws RequestExpiredException, IOException, UnsupportedDataTypeException {
+    protected synchronized Object send(int requestTypeId, Object[] args, boolean withRequestId, boolean respond, boolean blocking, int expiryTime)
+            throws RequestExpiredException, IOException, UnsupportedDataTypeException {
         OutputStream out = null;
 
-        int requestId = requestIdIncrementor++;
+        int requestId = requestIdIncrementor.incrementAndGet();
 
         if (respond) {
             if (requestId < 31) {
@@ -183,24 +181,29 @@ public class RPC implements RemoteInput {
         Object returnObject = null;
 
         if (requestTypeId > localMethodMap.length) {
-            Logger.getLogger(RPC.class.getName()).log(Level.SEVERE, "RPC:receive(): requestTypeId {0} greater than array size {1}", new Object[]{requestTypeId, localMethodMap.length});
+            LOG.log(Level.SEVERE, "requestTypeId {0} greater than array size {1}", new Object[]{requestTypeId, localMethodMap.length});
             return returnObject;
         }
 
         RPCRegistryMethod method = localMethodMap[requestTypeId];
         if (method == null) {
-            Logger.getLogger(RPC.class.getName()).log(Level.SEVERE, "RPC:receive(): method with requestTypeId {0} not found", new Object[]{requestTypeId});
+            LOG.log(Level.SEVERE, "method with requestTypeId {0} not found", new Object[]{requestTypeId});
             return returnObject;
+        }
+
+        if (method.instance == null) {
+            // record
+            return null;
         }
 
         try {
             returnObject = method.method.invoke(method.instance, args);
         } catch (IllegalAccessException ex) {
-            Logger.getLogger(RPC.class.getName()).log(Level.SEVERE, null, ex);
+            LOG.log(Level.SEVERE, null, ex);
         } catch (IllegalArgumentException ex) {
-            Logger.getLogger(RPC.class.getName()).log(Level.SEVERE, null, ex);
+            LOG.log(Level.SEVERE, null, ex);
         } catch (InvocationTargetException ex) {
-            Logger.getLogger(RPC.class.getName()).log(Level.SEVERE, null, ex);
+            LOG.log(Level.SEVERE, null, ex);
         }
 
         return returnObject;
@@ -213,7 +216,7 @@ public class RPC implements RemoteInput {
     public void bind(Class<?> objectClass, Object instance) {
         Integer methodRegistryIndex;
         if ((methodRegistryIndex = registeredLocalClasses.get(objectClass)) == null) {
-            Logger.getLogger(RPC.class.getName()).log(Level.SEVERE, "RPC:bindClass(): class {0} not registered", objectClass.getName());
+            LOG.log(Level.SEVERE, "class {0} not registered", objectClass.getName());
             return;
         }
 
@@ -228,7 +231,7 @@ public class RPC implements RemoteInput {
     public void unbind(Class<?> objectClass) {
         Integer methodRegistryIndex;
         if ((methodRegistryIndex = registeredLocalClasses.get(objectClass)) == null) {
-            Logger.getLogger(RPC.class.getName()).log(Level.SEVERE, "RPC:unbindClass(): class {0} not registered", objectClass.getName());
+            LOG.log(Level.SEVERE, "class {0} not registered", objectClass.getName());
             return;
         }
 
