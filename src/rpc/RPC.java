@@ -129,15 +129,15 @@ public class RPC implements RemoteInput {
         int requestId = requestIdIncrementor.incrementAndGet();
 
         if (respond) {
-            if (requestId < 31) {
+            if (requestId <= 31) {
                 sendBuffer[0] = (byte) (requestId & 0xff);
                 out.write(sendBuffer, 0, 1);
-            } else if (requestId < 8191) {
+            } else if (requestId <= 8191) {
                 sendBuffer[0] = (byte) ((requestId >> 8) & 0xff);
                 sendBuffer[0] |= 32;
                 sendBuffer[1] = (byte) (requestId & 0xff);
                 out.write(sendBuffer, 0, 2);
-            } else if (requestId < 2097151) {
+            } else if (requestId <= 2097151) {
                 sendBuffer[0] = (byte) ((requestId >> 16) & 0xff);
                 sendBuffer[0] |= 64;
                 sendBuffer[1] = (byte) ((requestId >> 8) & 0xff);
@@ -177,7 +177,7 @@ public class RPC implements RemoteInput {
         return new Object();
     }
 
-    public Object receive(int requestTypeId, Object[] args) {
+    protected Object invoke(int requestTypeId, Object[] args) {
         Object returnObject = null;
 
         if (requestTypeId > localMethodMap.length) {
@@ -192,7 +192,7 @@ public class RPC implements RemoteInput {
         }
 
         if (method.instance == null) {
-            // record
+            LOG.log(Level.SEVERE, "no instance for requestTypeId {0} found", new Object[]{requestTypeId});
             return null;
         }
 
