@@ -7,5 +7,5 @@ import java.io.IOException;
  */
 public interface RemoteInput {
 
-    void feed(byte[] b) throws IOException;
+    void feed(byte[] b, int offset, int length) throws IOException;
 }
