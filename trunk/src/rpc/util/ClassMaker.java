@@ -9,8 +9,6 @@ import javassist.CtNewMethod;
 import javassist.NotFoundException;
 import rpc.RPC;
 import rpc.annotation.Blocking;
-import rpc.annotation.Expiry;
-import rpc.annotation.NoRequestId;
 import rpc.annotation.NoRespond;
 import rpc.annotation.RequestTypeId;
 
@@ -65,10 +63,8 @@ public class ClassMaker {
                 parameterCount++;
             }
 
-            // ) throws RequestExpiredException, java.io.IOException, UnsupportedDataTypeException {
-            methodBody.append(") throws ");
-            methodBody.append(rpcClass.getPackage().getName());
-            methodBody.append(".exception.RequestExpiredException, java.io.IOException, ");
+            // ) throws java.io.IOException, UnsupportedDataTypeException {
+            methodBody.append(") throws java.io.IOException, ");
             methodBody.append(rpcClass.getPackage().getName());
             methodBody.append(".codec.exception.UnsupportedDataTypeException {");
             methodBody.append("\n");
@@ -108,12 +104,6 @@ public class ClassMaker {
                 continue;
             }
 
-            boolean withRequestId = true;
-            NoRequestId noRequestIdAnnotation = method.getAnnotation(NoRequestId.class);
-            if (noRequestIdAnnotation != null) {
-                withRequestId = false;
-            }
-
             boolean respond = true;
             NoRespond noRespondAnnotation = method.getAnnotation(NoRespond.class);
             if (noRespondAnnotation != null) {
@@ -126,23 +116,13 @@ public class ClassMaker {
                 blocking = blockingAnnotation.value();
             }
 
-            int expiryTime = Expiry.defaultExpiryTime;
-            Expiry expiryAnnotation = method.getAnnotation(Expiry.class);
-            if (expiryAnnotation != null) {
-                expiryTime = expiryAnnotation.value();
-            }
-
-            // this.rpc.send(requestId, objects, withRequestId, respond, blocking, expiryTime); }
+            // this.rpc.send(requestId, objects, respond, blocking); }
             methodBody.append("this.rpc.send(");
             methodBody.append(requestId);
             methodBody.append(", objects, ");
-            methodBody.append(withRequestId);
-            methodBody.append(", ");
             methodBody.append(respond);
             methodBody.append(", ");
             methodBody.append(blocking);
-            methodBody.append(", ");
-            methodBody.append(expiryTime);
             methodBody.append(");");
             methodBody.append("\n");
             methodBody.append("}");

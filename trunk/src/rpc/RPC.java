@@ -1,28 +1,30 @@
 package rpc;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.zip.CRC32;
 import javassist.CannotCompileException;
 import javassist.NotFoundException;
 import rpc.RPCRegistry.RPCRegistryMethod;
-import rpc.annotation.NoRequestId;
 import rpc.annotation.NoRespond;
 import rpc.annotation.RequestTypeId;
+import rpc.codec.CodecFactory;
 import rpc.codec.Generator;
 import rpc.codec.Parser;
+import rpc.codec.exception.InvalidFormatException;
 import rpc.codec.exception.UnsupportedDataTypeException;
-import rpc.exception.RequestExpiredException;
 import rpc.transport.RemoteInput;
+import rpc.transport.RemoteOutput;
 import rpc.util.ClassMaker;
 
 /**
@@ -37,7 +39,10 @@ public class RPC implements RemoteInput {
     protected Map<Class<?>, Integer> registeredRemoteClasses;
     // for send function
     protected AtomicInteger requestIdIncrementor;
-    private byte[] sendBuffer;
+    protected RemoteOutput out;
+    protected byte[] packetHeader;
+    //
+    protected final Map<Integer, RPCRequest> requestList;
     //
     protected RPCRegistryMethod[] localMethodMap;
     protected Map<Class<?>, Object> remoteImplementations;
@@ -53,8 +58,15 @@ public class RPC implements RemoteInput {
         this.registeredLocalClasses = registeredLocalClasses;
         this.registeredRemoteClasses = registeredRemoteClasses;
 
-        this.requestIdIncrementor = new AtomicInteger(0);
-        this.sendBuffer = new byte[4];
+        requestIdIncrementor = new AtomicInteger(0);
+        packetHeader = new byte[2];
+        packetHeader[0] = (byte) 1;
+        packetHeader[1] = (byte) 7;
+
+        requestList = Collections.synchronizedMap(new HashMap<Integer, RPCRequest>());
+
+        generator = CodecFactory.getGenerator();
+        parser = CodecFactory.getParser();
 
         // local
         int localMethodTypeIdMax = 0;
@@ -69,11 +81,6 @@ public class RPC implements RemoteInput {
             RequestTypeId requestTypeId = method.method.getAnnotation(RequestTypeId.class);
             if (requestTypeId == null || requestTypeId.value() < 0) {
                 continue;
-            }
-
-            NoRequestId noRequestId = method.method.getAnnotation(NoRequestId.class);
-            if (noRequestId != null) {
-                method.noRequestId = true;
             }
 
             NoRespond noRespond = method.method.getAnnotation(NoRespond.class);
@@ -122,59 +129,119 @@ public class RPC implements RemoteInput {
         }
     }
 
-    protected synchronized Object send(int requestTypeId, Object[] args, boolean withRequestId, boolean respond, boolean blocking, int expiryTime)
-            throws RequestExpiredException, IOException, UnsupportedDataTypeException {
-        OutputStream out = null;
+    public void setRemoteOutput(RemoteOutput out) {
+        this.out = out;
+    }
 
-        int requestId = requestIdIncrementor.incrementAndGet();
+    protected Object send(int requestTypeId, Object[] args, boolean respond, boolean blocking)
+            throws IOException, UnsupportedDataTypeException {
+        if (out == null) {
+            throw new IOException("RemoteOutput is not set");
+        }
 
+        //<editor-fold defaultstate="collapsed" desc="prepare requestId and requestTypeId">
+        int sendBufferIndex = 0;
+        byte[] sendBuffer = new byte[6];
+
+        int requestId = 0;
         if (respond) {
-            if (requestId <= 31) {
-                sendBuffer[0] = (byte) (requestId & 0xff);
-                out.write(sendBuffer, 0, 1);
-            } else if (requestId <= 8191) {
-                sendBuffer[0] = (byte) ((requestId >> 8) & 0xff);
-                sendBuffer[0] |= 32;
-                sendBuffer[1] = (byte) (requestId & 0xff);
-                out.write(sendBuffer, 0, 2);
-            } else if (requestId <= 2097151) {
-                sendBuffer[0] = (byte) ((requestId >> 16) & 0xff);
-                sendBuffer[0] |= 64;
-                sendBuffer[1] = (byte) ((requestId >> 8) & 0xff);
-                sendBuffer[2] = (byte) (requestId & 0xff);
-                out.write(sendBuffer, 0, 3);
+            requestId = requestIdIncrementor.incrementAndGet();
+            if (requestId <= 32767) {
+                sendBuffer[sendBufferIndex++] = (byte) ((requestId >> 8) & 0xff);
+                // first bit is 0
+                sendBuffer[sendBufferIndex++] = (byte) (requestId & 0xff);
+            } else if (requestId <= 4194303) {
+                sendBuffer[sendBufferIndex] = (byte) ((requestId >> 16) & 0xff);
+                sendBuffer[sendBufferIndex++] |= 128;
+                // first bit is 1, second bit is 0
+                sendBuffer[sendBufferIndex++] = (byte) ((requestId >> 8) & 0xff);
+                sendBuffer[sendBufferIndex++] = (byte) (requestId & 0xff);
             } else {
-                sendBuffer[0] = (byte) ((requestId >> 24) & 0xff);
-                sendBuffer[0] |= 96;
-                sendBuffer[1] = (byte) ((requestId >> 16) & 0xff);
-                sendBuffer[2] = (byte) ((requestId >> 8) & 0xff);
-                sendBuffer[3] = (byte) (requestId & 0xff);
-                out.write(sendBuffer, 0, 4);
+                // max: 1073741823
+                sendBuffer[sendBufferIndex] = (byte) ((requestId >> 24) & 0xff);
+                sendBuffer[sendBufferIndex++] |= 192;
+                // first bit is 1, second bit is 1
+                sendBuffer[sendBufferIndex++] = (byte) ((requestId >> 16) & 0xff);
+                sendBuffer[sendBufferIndex++] = (byte) ((requestId >> 8) & 0xff);
+                sendBuffer[sendBufferIndex++] = (byte) (requestId & 0xff);
             }
         }
 
+        // first bit is the packet type, 0 for send, 1 for respond
         if (requestTypeId <= 63) {
-            sendBuffer[0] = (byte) (requestTypeId & 0xff);
-            sendBuffer[0] |= 128;
-            out.write(sendBuffer, 0, 1);
+            sendBuffer[sendBufferIndex++] = (byte) (requestTypeId & 0xff);
         } else {
-            sendBuffer[0] = (byte) ((requestTypeId >> 8) & 0xff);
-            sendBuffer[0] |= 192;
-            sendBuffer[1] = (byte) (requestTypeId & 0xff);
-            out.write(sendBuffer, 0, 2);
+            // max: 16383
+            sendBuffer[sendBufferIndex] = (byte) ((requestTypeId >> 8) & 0xff);
+            sendBuffer[sendBufferIndex++] |= 64;
+            sendBuffer[sendBufferIndex++] = (byte) (requestTypeId & 0xff);
+        }
+        //</editor-fold>
+
+        byte[] content = generator.generate(Arrays.asList(args));
+
+        //<editor-fold defaultstate="collapsed" desc="prepare packet">
+        int packetLength = content.length;
+        int byteLength = packetHeader.length + sendBufferIndex + (packetLength <= 32767 ? 2 : 4) + content.length + 4;
+
+        int packetBufferIndex = 0;
+        byte[] packetBuffer = new byte[byteLength];
+
+        System.arraycopy(packetHeader, 0, packetBuffer, packetBufferIndex, packetHeader.length);
+        packetBufferIndex += packetHeader.length;
+
+        if (packetLength <= 32767) {
+            packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 8);
+            packetBuffer[packetBufferIndex++] = (byte) (packetLength);
+        } else {
+            byte firstByte = (byte) (packetLength >> 24);
+            firstByte |= 128;
+            packetBuffer[packetBufferIndex++] = firstByte;
+            packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 16);
+            packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 8);
+            packetBuffer[packetBufferIndex++] = (byte) (packetLength);
         }
 
-        generator.write(out, Arrays.asList(args));
+        System.arraycopy(sendBuffer, 0, packetBuffer, packetBufferIndex, sendBufferIndex);
+        packetBufferIndex += sendBufferIndex;
+        System.arraycopy(content, 0, packetBuffer, packetBufferIndex, content.length);
+        packetBufferIndex += content.length;
 
-        out.flush();
+        CRC32 crc32 = new CRC32();
+        crc32.update(sendBuffer, 0, sendBufferIndex);
+        crc32.update(content);
 
-        System.out.println(requestTypeId);
-        System.out.println("object size: " + args.length);
-        System.out.println(withRequestId);
-        System.out.println(respond);
-        System.out.println(blocking);
-        System.out.println(expiryTime);
-        return new Object();
+        long crc32Value = crc32.getValue();
+        packetBuffer[packetBufferIndex++] = (byte) (crc32Value >> 24);
+        packetBuffer[packetBufferIndex++] = (byte) (crc32Value >> 16);
+        packetBuffer[packetBufferIndex++] = (byte) (crc32Value >> 8);
+        packetBuffer[packetBufferIndex++] = (byte) (crc32Value);
+        //</editor-fold>
+
+        final RPCRequest request = new RPCRequest(requestId, System.currentTimeMillis());
+        if (respond) {
+            requestList.put(byteLength, request);
+        }
+
+        out.write(packetBuffer);
+
+        if (respond) {
+            if (!blocking) {
+                return null;
+            } else {
+                synchronized (request) {
+                    try {
+                        request.wait();
+                    } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("Thread interruptted when waiting for respond");
+                    }
+                }
+                return request.respondContent;
+            }
+        } else {
+            return null;
+        }
     }
 
     protected Object invoke(int requestTypeId, Object[] args) {
@@ -241,8 +308,165 @@ public class RPC implements RemoteInput {
             method.instance = null;
         }
     }
+    protected boolean packetStarted = false;
+    protected byte[] _buffer = new byte[10];
+    protected int _bufferRead = 0;
+    protected int _packetLength = -1;
+    protected int _requestId = -1;
+    protected int _requestTypeId = -1;
+    protected byte[] _content;
+    protected int _contentRead = 0;
+    protected CRC32 _crc32 = new CRC32();
 
     @Override
-    public void feed(byte[] b) throws IOException {
+    public void feed(byte[] b, int offset, int length) throws IOException {
+        int start = offset, end = offset + length;
+
+        if (!packetStarted) {
+            while (start < end) {
+                if (b[start] == packetHeader[0]) {
+                    _bufferRead = 1;
+                } else if (_bufferRead == 1 && b[start] == packetHeader[1]) {
+                    packetStarted = true;
+
+                    _bufferRead = 0;
+                    _packetLength = -1;
+                    _requestId = -1;
+                    _requestTypeId = -1;
+                    _content = null;
+                    _contentRead = 0;
+                    _crc32.reset();
+
+                    start++;
+                    break;
+                } else {
+                    _bufferRead = 0;
+                }
+                start++;
+            }
+        }
+        if (!packetStarted) {
+            return;
+        }
+
+        if (_requestTypeId == -1) {
+            start = fillBuffer(b, start, end, 10);
+            if (_bufferRead == 10) {
+                _bufferRead = 0;
+
+                if ((_buffer[_bufferRead] & 128) == 0) {
+                    _packetLength |= (_buffer[_bufferRead++] & 0xff) << 8;
+                    _packetLength |= (_buffer[_bufferRead++] & 0xff);
+                } else {
+                    _buffer[_bufferRead] &= 127;
+                    _packetLength |= (_buffer[_bufferRead++] & 0xff) << 24;
+                    _packetLength |= (_buffer[_bufferRead++] & 0xff) << 16;
+                    _packetLength |= (_buffer[_bufferRead++] & 0xff) << 8;
+                    _packetLength |= (_buffer[_bufferRead++] & 0xff);
+                }
+
+
+                if ((_buffer[_bufferRead] & 128) == 0) {
+                    _requestId |= (_buffer[_bufferRead++] & 0xff) << 8;
+                    _requestId |= (_buffer[_bufferRead++] & 0xff);
+                } else {
+                    if ((_buffer[_bufferRead] & 64) == 0) {
+                        _requestId |= (_buffer[_bufferRead++] & 0xff) << 16;
+                        _requestId |= (_buffer[_bufferRead++] & 0xff) << 8;
+                        _requestId |= (_buffer[_bufferRead++] & 0xff);
+                    } else {
+                        _requestId |= (_buffer[_bufferRead++] & 0xff) << 24;
+                        _requestId |= (_buffer[_bufferRead++] & 0xff) << 16;
+                        _requestId |= (_buffer[_bufferRead++] & 0xff) << 8;
+                        _requestId |= (_buffer[_bufferRead++] & 0xff);
+                    }
+                }
+
+                if ((_buffer[_bufferRead] & 64) == 0) {
+                    _buffer[_bufferRead] &= 63;
+                    _requestTypeId = (_buffer[_bufferRead++] & 0xff);
+                } else {
+                    _buffer[_bufferRead] &= 63;
+                    _requestTypeId |= (_buffer[_bufferRead++] & 0xff) << 8;
+                    _requestTypeId |= (_buffer[_bufferRead++] & 0xff);
+                }
+
+                _crc32.update(_buffer, 0, _bufferRead);
+                _content = new byte[_packetLength];
+
+                if (_bufferRead != 10) {
+                    int byteToRead = 10 - _bufferRead;
+                    if (byteToRead != 0) {
+                        _contentRead = byteToRead;
+                        System.arraycopy(_buffer, _bufferRead, _content, 0, byteToRead);
+                    }
+                }
+
+                _bufferRead = 0;
+            }
+        }
+        if (_bufferRead != 10) {
+            return;
+        }
+
+        if (_contentRead != _packetLength) {
+            int byteToRead = _packetLength - _contentRead;
+            if (end - start < byteToRead) {
+                byteToRead = end - start;
+            }
+            System.arraycopy(b, start, _buffer, _contentRead, byteToRead);
+            _contentRead += byteToRead;
+
+            if (_contentRead == _packetLength) {
+                _crc32.update(_content);
+            }
+        }
+        if (_contentRead != _packetLength) {
+            return;
+        }
+
+        start = fillBuffer(b, start, end, 4);
+        if (_bufferRead == 4) {
+            long crc32 = 0;
+            crc32 |= (_buffer[_bufferRead++] & 0xff) << 24;
+            crc32 |= (_buffer[_bufferRead++] & 0xff) << 16;
+            crc32 |= (_buffer[_bufferRead++] & 0xff) << 8;
+            crc32 |= (_buffer[_bufferRead++] & 0xff);
+
+            if (crc32 == _crc32.getValue()) {
+                try {
+                    List<Object> parsedResult = (List<Object>) parser.parse(_content);
+                    Object respond = invoke(_requestTypeId, parsedResult.toArray());
+                    // respond according to the requestId
+                } catch (InvalidFormatException ex) {
+                    LOG.log(Level.WARNING, null, ex);
+                } finally {
+                    packetStarted = false;
+                }
+            }
+        }
+    }
+
+    protected int fillBuffer(byte[] b, int start, int end, int fillSize) {
+        int byteToRead = fillSize - _bufferRead;
+        if (end - start < byteToRead) {
+            byteToRead = end - start;
+        }
+        System.arraycopy(b, start, _buffer, _bufferRead, byteToRead);
+        _bufferRead += byteToRead;
+        return start;
+    }
+
+    protected static class RPCRequest {
+
+        protected final int requestId;
+        protected long sendTime;
+        protected Object respondContent;
+
+        protected RPCRequest(int requestId, long sendTime) {
+            this.requestId = requestId;
+            this.sendTime = sendTime;
+            respondContent = null;
+        }
     }
 }

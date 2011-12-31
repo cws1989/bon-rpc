@@ -67,13 +67,11 @@ public class RPCRegistry {
 
         protected final Method method;
         protected Object instance;
-        protected boolean noRequestId;
         protected boolean noRespond;
 
         protected RPCRegistryMethod(Method method, Object instance) {
             this.method = method;
             this.instance = instance;
-            this.noRequestId = false;
             this.noRespond = false;
         }
     }
