@@ -8,10 +8,12 @@ import rpc.annotation.RequestTypeId;
 public interface RemoteInterface {
 
     @Blocking(true)
-    @RequestTypeId(1)
-    void abc(Map<List<Object>, List<Object>> abc, double absc, int abcc, long dss);
+    @RequestTypeId(4)
+    Double ljkihy(Map<Integer, List<String>> test);
 
-    List<Object> get();
+    @Blocking(true)
+    @RequestTypeId(5)
+    Double get(int x);
 
     @Blocking(true)
     @RequestTypeId(2)

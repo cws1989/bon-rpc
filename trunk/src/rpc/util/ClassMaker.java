@@ -89,11 +89,11 @@ public class ClassMaker {
                 methodBody.append("\n");
             }
 
-            // return (returnTypeCasting)
+            // try { return (returnTypeCasting)
             methodBody.append("\t");
             if (!method.getReturnType().equals(void.class)) {
                 methodBody.append("try {\n");
-                methodBody.append("\treturn ($r) ");
+                methodBody.append("\t\treturn ($r) ");
             }
 
             // read annotations
@@ -131,16 +131,18 @@ public class ClassMaker {
             methodBody.append(blocking);
             methodBody.append(");");
 
+            // } catch (ClassCastException ex) { Logger.getLogger(this.getClass().getName()).log(Level.SEVERE, null, ex); }
             if (!method.getReturnType().equals(void.class)) {
-                methodBody.append("\n} catch (ClassCastException ex) { Logger.getLogger(this.getClass().getName()).log(Level.SEVERE, null, ex); }");
+                methodBody.append("\n\t} catch (ClassCastException ex) {\n\t\tjava.util.logging.Logger.getLogger(this.getClass().getName()).log(java.util.logging.Level.SEVERE, null, ex);\n\t}");
+                methodBody.append("\n\treturn null;");
             }
 
             methodBody.append("\n");
             methodBody.append("}");
 
             // add method to class
-            evalClass.addMethod(CtNewMethod.make(methodBody.toString(), evalClass));
 //            System.out.println(methodBody.toString());
+            evalClass.addMethod(CtNewMethod.make(methodBody.toString(), evalClass));
         }
 
         return evalClass.toClass();

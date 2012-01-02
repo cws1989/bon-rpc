@@ -65,38 +65,29 @@ public class DefaultParser implements Parser {
         return returnList;
     }
 
-    protected Map<String, Object> readMap() throws IOException, InvalidFormatException {
-        Map<String, Object> returnMap = new HashMap<String, Object>();
-
-        int elementNameLength = in.read();
-        if (elementNameLength == 0) {
-            return returnMap;
-        } else if (elementNameLength == -1) {
-            throw new InvalidFormatException("Failed to read element length");
-        }
-        byte[] elementNameBuffer = new byte[elementNameLength];
-        byteRead = in.read(elementNameBuffer, 0, elementNameLength);
-        if (byteRead != elementNameLength) {
-            throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", elementNameLength, byteRead));
-        }
-        String elementName = new String(elementNameBuffer);
+    protected Map<Object, Object> readMap() throws IOException, InvalidFormatException {
+        Map<Object, Object> returnMap = new HashMap<Object, Object>();
 
         int dataType;
+
+        dataType = in.read();
+        if (dataType == 0) {
+            return returnMap;
+        } else if (dataType == -1) {
+            throw new InvalidFormatException(String.format("Expected to read %1$d bytes but failed", 1, dataType));
+        }
+        Object elementName = readItem(dataType);
+
         while ((dataType = in.read()) > 0) {
             returnMap.put(elementName, readItem(dataType));
 
-            elementNameLength = in.read();
-            if (elementNameLength == 0) {
+            dataType = in.read();
+            if (dataType == 0) {
                 return returnMap;
-            } else if (elementNameLength == -1) {
-                throw new InvalidFormatException("Failed to read element length");
+            } else if (dataType == -1) {
+                throw new InvalidFormatException(String.format("Expected to read %1$d bytes but failed", 1, dataType));
             }
-            elementNameBuffer = new byte[elementNameLength];
-            byteRead = in.read(elementNameBuffer, 0, elementNameLength);
-            if (byteRead != elementNameLength) {
-                throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", elementNameLength, byteRead));
-            }
-            elementName = new String(elementNameBuffer);
+            elementName = readItem(dataType);
         }
 
         if (returnMap.isEmpty()) {
@@ -132,9 +123,9 @@ public class DefaultParser implements Parser {
                         | (((long) (buffer[2] & 0xff)) << 40)
                         | (((long) (buffer[3] & 0xff)) << 32)
                         | ((long) (buffer[4] & 0xff) << 24)
-                        | ((long) (buffer[5] & 0xff) << 16)
-                        | ((long) (buffer[6] & 0xff) << 8)
-                        | ((long) buffer[7] & 0xff);
+                        | ((buffer[5] & 0xff) << 16)
+                        | ((buffer[6] & 0xff) << 8)
+                        | (buffer[7] & 0xff);
                 return Double.longBitsToDouble(longBuffer);
             case 8:
                 return true;
@@ -229,7 +220,7 @@ public class DefaultParser implements Parser {
                 returnValue |= byteRead;
                 break;
             case 1:
-                in.read(buffer, 0, 2);
+                byteRead = in.read(buffer, 0, 2);
                 if (byteRead != 2) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 2, byteRead));
                 }
@@ -241,7 +232,7 @@ public class DefaultParser implements Parser {
         }
 
         if ((header & 0x80) != 0) {
-            returnValue = (short) -returnValue;
+            returnValue |= 0x80 << 8;
         }
 
         return returnValue;
@@ -261,7 +252,7 @@ public class DefaultParser implements Parser {
                 returnValue |= byteRead;
                 break;
             case 1:
-                in.read(buffer, 0, 2);
+                byteRead = in.read(buffer, 0, 2);
                 if (byteRead != 2) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 2, byteRead));
                 }
@@ -269,7 +260,7 @@ public class DefaultParser implements Parser {
                 returnValue |= (buffer[1] & 0xff);
                 break;
             case 2:
-                in.read(buffer, 0, 3);
+                byteRead = in.read(buffer, 0, 3);
                 if (byteRead != 3) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 3, byteRead));
                 }
@@ -278,7 +269,7 @@ public class DefaultParser implements Parser {
                 returnValue |= (buffer[2] & 0xff);
                 break;
             case 3:
-                in.read(buffer, 0, 4);
+                byteRead = in.read(buffer, 0, 4);
                 if (byteRead != 4) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 4, byteRead));
                 }
@@ -292,7 +283,7 @@ public class DefaultParser implements Parser {
         }
 
         if ((header & 0x80) != 0) {
-            returnValue = -returnValue;
+            returnValue |= 0x80 << 24;
         }
 
         return returnValue;
@@ -333,7 +324,7 @@ public class DefaultParser implements Parser {
                 if (byteRead != 4) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 4, byteRead));
                 }
-                returnValue |= (buffer[0] & 0xff) << 24;
+                returnValue |= ((long) buffer[0] & 0xff) << 24;
                 returnValue |= (buffer[1] & 0xff) << 16;
                 returnValue |= (buffer[2] & 0xff) << 8;
                 returnValue |= (buffer[3] & 0xff);
@@ -346,9 +337,9 @@ public class DefaultParser implements Parser {
                 returnValue |= ((long) (buffer[0] & 0xff)) << 40;
                 returnValue |= ((long) (buffer[1] & 0xff)) << 32;
                 returnValue |= ((long) buffer[2] & 0xff) << 24;
-                returnValue |= ((long) buffer[3] & 0xff) << 16;
-                returnValue |= ((long) buffer[4] & 0xff) << 8;
-                returnValue |= ((long) buffer[5] & 0xff);
+                returnValue |= (buffer[3] & 0xff) << 16;
+                returnValue |= (buffer[4] & 0xff) << 8;
+                returnValue |= (buffer[5] & 0xff);
                 break;
             case 7:
                 byteRead = in.read(buffer, 0, 8);
@@ -360,16 +351,16 @@ public class DefaultParser implements Parser {
                 returnValue |= ((long) (buffer[2] & 0xff)) << 40;
                 returnValue |= ((long) (buffer[3] & 0xff)) << 32;
                 returnValue |= ((long) buffer[4] & 0xff) << 24;
-                returnValue |= ((long) buffer[5] & 0xff) << 16;
-                returnValue |= ((long) buffer[6] & 0xff) << 8;
-                returnValue |= ((long) buffer[7] & 0xff);
+                returnValue |= (buffer[5] & 0xff) << 16;
+                returnValue |= (buffer[6] & 0xff) << 8;
+                returnValue |= (buffer[7] & 0xff);
                 break;
             default:
                 throw new InvalidFormatException(String.format("Unexpected byte array length for 'long' value: %1$d", length));
         }
 
         if ((header & 0x80) != 0) {
-            returnValue = -returnValue;
+            returnValue |= ((long) 0x80) << 56;
         }
 
         return returnValue;
