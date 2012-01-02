@@ -6,7 +6,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Specify the request type id, the request type id should be unique among methods
+ * Specify the request type id, the request type id should be unique among methods.
  * @author Chan Wai Shing <cws1989@gmail.com>
  */
 @Retention(RetentionPolicy.RUNTIME)

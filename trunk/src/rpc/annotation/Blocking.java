@@ -8,6 +8,7 @@ import java.lang.annotation.Target;
 /**
  * Indicate it is a blocking request, this will block the calling thread until a respond received or expired.
  * If this annotation is not specified, it will perform non-blocking request.
+ * Note that if the return type is not null, this will force blocking.
  * @author Chan Wai Shing <cws1989@gmail.com>
  */
 @Retention(RetentionPolicy.RUNTIME)

@@ -93,11 +93,12 @@ public class DefaultGenerator implements Generator {
                 buffer[0] = 12;
                 buffer[1] = (byte) stringBytesLength;
                 out.write(buffer, 0, 2);
-            } else if (stringBytesLength <= 65535) {
+            } else if (stringBytesLength <= 16777215) {
                 buffer[0] = 13;
-                buffer[1] = (byte) (stringBytesLength >> 8);
-                buffer[2] = (byte) stringBytesLength;
-                out.write(buffer, 0, 3);
+                buffer[1] = (byte) (stringBytesLength >> 16);
+                buffer[2] = (byte) (stringBytesLength >> 8);
+                buffer[3] = (byte) stringBytesLength;
+                out.write(buffer, 0, 4);
             } else {
                 throw new UnsupportedDataTypeException();
             }
@@ -137,11 +138,12 @@ public class DefaultGenerator implements Generator {
                 buffer[0] = (byte) 14;
                 buffer[1] = (byte) binaryBytesLength;
                 out.write(buffer, 0, 2);
-            } else if (binaryBytesLength <= 65535) {
+            } else if (binaryBytesLength <= 16777215) {
                 buffer[0] = (byte) 15;
-                buffer[1] = (byte) (binaryBytesLength >> 8);
-                buffer[2] = (byte) binaryBytesLength;
-                out.write(buffer, 0, 3);
+                buffer[1] = (byte) (binaryBytesLength >> 16);
+                buffer[2] = (byte) (binaryBytesLength >> 8);
+                buffer[3] = (byte) binaryBytesLength;
+                out.write(buffer, 0, 4);
             } else {
                 throw new UnsupportedDataTypeException();
             }
