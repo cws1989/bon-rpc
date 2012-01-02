@@ -36,7 +36,8 @@ public class RPCRegistry {
     }
 
     public RPC getRPC() throws NotFoundException, CannotCompileException, InstantiationException, IllegalAccessException {
-        return new RPC(localMethodRegistry, remoteMethodRegistry, registeredLocalClasses, registeredRemoteClasses);
+        return new RPC(new ArrayList<RPCRegistryMethod>(localMethodRegistry), new ArrayList<RPCRegistryMethod>(remoteMethodRegistry),
+                new HashMap<Class<?>, Integer>(registeredLocalClasses), new HashMap<Class<?>, Integer>(registeredRemoteClasses));
     }
 
     public void registerLocal(Class<?> objectClass) {
@@ -53,7 +54,7 @@ public class RPCRegistry {
             return 0;
         }
 
-        classMap.put(objectClass, classMap.size());
+        classMap.put(objectClass, methodList.size());
 
         Method[] methods = objectClass.getDeclaredMethods();
         for (Method method : methods) {

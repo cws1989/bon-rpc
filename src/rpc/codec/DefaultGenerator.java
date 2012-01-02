@@ -50,22 +50,18 @@ public class DefaultGenerator implements Generator {
         if (data instanceof List) {
             generator.writeList((List<Object>) data);
         } else if (data instanceof Map) {
-            generator.writeMap((Map<String, Object>) data);
+            generator.writeMap((Map<Object, Object>) data);
         } else {
             throw new UnsupportedDataTypeException();
         }
     }
 
-    protected void writeMap(Map<String, Object> data) throws IOException, UnsupportedDataTypeException {
+    protected void writeMap(Map<Object, Object> data) throws IOException, UnsupportedDataTypeException {
         out.write(1);
 
-        for (String itemKey : data.keySet()) {
+        for (Object itemKey : data.keySet()) {
             Object item = data.get(itemKey);
-
-            byte[] itemKeyBytes = itemKey.getBytes();
-            out.write(itemKeyBytes.length);
-            out.write(itemKeyBytes);
-
+            writeItem(itemKey);
             writeItem(item);
         }
 
@@ -150,7 +146,7 @@ public class DefaultGenerator implements Generator {
 
             out.write(binaryBytes, 0, binaryBytesLength);
         } else if (item instanceof Map) {
-            writeMap((Map<String, Object>) item);
+            writeMap((Map<Object, Object>) item);
         } else if (item instanceof List) {
             writeList((List<Object>) item);
         } else if (item instanceof Boolean) {

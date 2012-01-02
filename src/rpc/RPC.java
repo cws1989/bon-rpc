@@ -187,7 +187,7 @@ public class RPC implements RemoteInput {
         }
         //</editor-fold>
 
-        byte[] content = CodecFactory.getGenerator().generate(Arrays.asList(args));
+        byte[] content = CodecFactory.getGenerator().generate(args == null ? new ArrayList<Object>() : Arrays.asList(args));
         if (content == null) {
             throw new IOException("error occurred when packing the data");
         }
@@ -372,271 +372,284 @@ public class RPC implements RemoteInput {
         public void feed(byte[] b, int offset, int length) throws IOException {
             int start = offset, end = offset + length;
 
-            //<editor-fold defaultstate="collapsed" desc="read packet header">
-            if (!packetStarted) {
-                while (start < end) {
-                    try {
-                        if (b[start] == packetHeader[0]) {
-                            _headerRead = 1;
-                        } else if (_headerRead == 1 && b[start] == packetHeader[1]) {
-                            packetStarted = true;
-                            _headerRead = 0;
+            try {
+                //<editor-fold defaultstate="collapsed" desc="read packet header">
+                if (!packetStarted) {
+                    while (start < end) {
+                        try {
+                            if (b[start] == packetHeader[0]) {
+                                _headerRead = 1;
+                            } else if (_headerRead == 1 && b[start] == packetHeader[1]) {
+                                packetStarted = true;
+                                _headerRead = 0;
 
-                            _packetLengthBufferRead = 0;
-                            _infoBufferRead = 0;
-                            _packetLength = -1;
-                            _requestId = -1;
-                            _isRespond = false;
-                            _requestTypeId = -1;
-                            _content = null;
-                            _contentRead = 0;
-                            _crcBufferRead = 0;
-                            _crcMatched = false;
-                            _crc32.reset();
+                                _packetLengthBufferRead = 0;
+                                _infoBufferRead = 0;
+                                _packetLength = -1;
+                                _requestId = -1;
+                                _isRespond = false;
+                                _requestTypeId = -1;
+                                _content = null;
+                                _contentRead = 0;
+                                _crcBufferRead = 0;
+                                _crcMatched = false;
+                                _crc32.reset();
 
-                            break;
-                        } else {
-                            _headerRead = 0;
+                                break;
+                            } else {
+                                _headerRead = 0;
+                            }
+                        } finally {
+                            start++;
                         }
-                    } finally {
-                        start++;
                     }
                 }
-            }
-            if (!packetStarted) {
-                return;
-            }
-            //</editor-fold>
-
-            //<editor-fold defaultstate="collapsed" desc="read packetLength">
-            if (_packetLength == -1) {
-                if (_packetLengthBufferRead == 0) {
-                    start = fillPacketLengthBuffer(b, start, end, 2);
+                if (!packetStarted) {
+                    return;
                 }
+                //</editor-fold>
 
-                if (_packetLengthBufferRead >= 2) {
-                    do {
-                        if ((_packetLengthBuffer[0] & 128) == 0) {
-                            int _packetLength_1 = 0;
-                            _packetLength_1 |= (_packetLengthBuffer[0] & 0xff) << 8;
-                            _packetLength_1 |= (_packetLengthBuffer[1] & 0xff);
+                //<editor-fold defaultstate="collapsed" desc="read packetLength">
+                if (_packetLength == -1) {
+                    if (_packetLengthBufferRead == 0) {
+                        start = fillPacketLengthBuffer(b, start, end, 2);
+                    }
 
-                            if (_packetLength_1 > 255) {
-                                start = fillPacketLengthBuffer(b, start, end, 4);
-                                if (_packetLengthBufferRead < 4) {
+                    if (_packetLengthBufferRead >= 2) {
+                        do {
+                            if ((_packetLengthBuffer[0] & 128) == 0) {
+                                int _packetLength_1 = 0;
+                                _packetLength_1 |= (_packetLengthBuffer[0] & 0xff) << 8;
+                                _packetLength_1 |= (_packetLengthBuffer[1] & 0xff);
+
+                                if (_packetLength_1 > 255) {
+                                    start = fillPacketLengthBuffer(b, start, end, 4);
+                                    if (_packetLengthBufferRead < 4) {
+                                        break;
+                                    }
+
+                                    int _packetLength_2 = 0;
+                                    _packetLength_2 |= (_packetLengthBuffer[2] & 0xff) << 8;
+                                    _packetLength_2 |= (_packetLengthBuffer[3] & 0xff);
+                                    if (_packetLength_1 != _packetLength_2) {
+                                        refeed();
+                                        break;
+                                    }
+                                }
+
+                                _packetLength = _packetLength_1;
+                            } else {
+                                start = fillPacketLengthBuffer(b, start, end, 12);
+                                if (_packetLengthBufferRead < 12) {
+                                    break;
+                                }
+
+                                int _packetLength_1 = 0;
+                                _packetLength_1 |= (_packetLengthBuffer[0] & 127) << 24;
+                                _packetLength_1 |= (_packetLengthBuffer[1] & 0xff) << 16;
+                                _packetLength_1 |= (_packetLengthBuffer[2] & 0xff) << 8;
+                                _packetLength_1 |= (_packetLengthBuffer[3] & 0xff);
+
+                                if (_packetLength_1 <= 32767) {
+                                    refeed();
                                     break;
                                 }
 
                                 int _packetLength_2 = 0;
-                                _packetLength_2 |= (_packetLengthBuffer[2] & 0xff) << 8;
-                                _packetLength_2 |= (_packetLengthBuffer[3] & 0xff);
+                                _packetLength_2 |= (_packetLengthBuffer[4] & 0xff) << 24;
+                                _packetLength_2 |= (_packetLengthBuffer[5] & 0xff) << 16;
+                                _packetLength_2 |= (_packetLengthBuffer[6] & 0xff) << 8;
+                                _packetLength_2 |= (_packetLengthBuffer[7] & 0xff);
                                 if (_packetLength_1 != _packetLength_2) {
                                     refeed();
-                                    break;
-                                }
-                            }
-
-                            _packetLength = _packetLength_1;
-                        } else {
-                            start = fillPacketLengthBuffer(b, start, end, 12);
-                            if (_packetLengthBufferRead < 12) {
-                                break;
-                            }
-
-                            int _packetLength_1 = 0;
-                            _packetLength_1 |= (_packetLengthBuffer[0] & 127) << 24;
-                            _packetLength_1 |= (_packetLengthBuffer[1] & 0xff) << 16;
-                            _packetLength_1 |= (_packetLengthBuffer[2] & 0xff) << 8;
-                            _packetLength_1 |= (_packetLengthBuffer[3] & 0xff);
-
-                            if (_packetLength_1 <= 32767) {
-                                refeed();
-                                break;
-                            }
-
-                            int _packetLength_2 = 0;
-                            _packetLength_2 |= (_packetLengthBuffer[4] & 0xff) << 24;
-                            _packetLength_2 |= (_packetLengthBuffer[5] & 0xff) << 16;
-                            _packetLength_2 |= (_packetLengthBuffer[6] & 0xff) << 8;
-                            _packetLength_2 |= (_packetLengthBuffer[7] & 0xff);
-                            if (_packetLength_1 != _packetLength_2) {
-                                refeed();
-                                break;
-                            }
-
-                            _packetLength_2 = 0;
-                            _packetLength_2 |= (_packetLengthBuffer[8] & 0xff) << 24;
-                            _packetLength_2 |= (_packetLengthBuffer[9] & 0xff) << 16;
-                            _packetLength_2 |= (_packetLengthBuffer[10] & 0xff) << 8;
-                            _packetLength_2 |= (_packetLengthBuffer[11] & 0xff);
-                            if (_packetLength_1 != _packetLength_2) {
-                                refeed();
-                                break;
-                            }
-
-                            if (_packetLength_1 > 65535) {
-                                start = fillPacketLengthBuffer(b, start, end, 16);
-                                if (_packetLengthBufferRead < 16) {
                                     break;
                                 }
 
                                 _packetLength_2 = 0;
-                                _packetLength_2 |= (_packetLengthBuffer[12] & 0xff) << 24;
-                                _packetLength_2 |= (_packetLengthBuffer[13] & 0xff) << 16;
-                                _packetLength_2 |= (_packetLengthBuffer[14] & 0xff) << 8;
-                                _packetLength_2 |= (_packetLengthBuffer[15] & 0xff);
+                                _packetLength_2 |= (_packetLengthBuffer[8] & 0xff) << 24;
+                                _packetLength_2 |= (_packetLengthBuffer[9] & 0xff) << 16;
+                                _packetLength_2 |= (_packetLengthBuffer[10] & 0xff) << 8;
+                                _packetLength_2 |= (_packetLengthBuffer[11] & 0xff);
                                 if (_packetLength_1 != _packetLength_2) {
                                     refeed();
                                     break;
                                 }
+
+                                if (_packetLength_1 > 65535) {
+                                    start = fillPacketLengthBuffer(b, start, end, 16);
+                                    if (_packetLengthBufferRead < 16) {
+                                        break;
+                                    }
+
+                                    _packetLength_2 = 0;
+                                    _packetLength_2 |= (_packetLengthBuffer[12] & 0xff) << 24;
+                                    _packetLength_2 |= (_packetLengthBuffer[13] & 0xff) << 16;
+                                    _packetLength_2 |= (_packetLengthBuffer[14] & 0xff) << 8;
+                                    _packetLength_2 |= (_packetLengthBuffer[15] & 0xff);
+                                    if (_packetLength_1 != _packetLength_2) {
+                                        refeed();
+                                        break;
+                                    }
+                                }
+
+                                _packetLength = _packetLength_1;
                             }
-
-                            _packetLength = _packetLength_1;
-                        }
-                        break;
-                    } while (true);
-                }
-            }
-            if (_packetLength == -1) {
-                return;
-            }
-            //</editor-fold>
-
-            //<editor-fold defaultstate="collapsed" desc="read isRespond, requestTypeId and requestId">
-            if (_requestTypeId == -1) {
-                start = fillInfoBuffer(b, start, end);
-                if (_infoBufferRead == 6) {
-                    _infoBufferRead = 0;
-
-                    _isRespond = (_infoBuffer[_infoBufferRead] & 128) != 0;
-
-                    if ((_infoBuffer[_infoBufferRead] & 64) == 0) {
-                        _infoBuffer[_infoBufferRead] &= 63;
-                        _requestTypeId = (_infoBuffer[_infoBufferRead++] & 0xff);
-                    } else {
-                        _infoBuffer[_infoBufferRead] &= 63;
-                        _requestTypeId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 8;
-                        _requestTypeId |= (_infoBuffer[_infoBufferRead++] & 0xff);
+                            break;
+                        } while (true);
                     }
+                }
+                if (_packetLength == -1) {
+                    return;
+                }
+                //</editor-fold>
 
-                    if ((_infoBuffer[_infoBufferRead] & 128) == 0) {
-                        _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 8;
-                        _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff);
-                    } else {
+                //<editor-fold defaultstate="collapsed" desc="read isRespond, requestTypeId and requestId">
+                if (_requestTypeId == -1) {
+                    start = fillInfoBuffer(b, start, end);
+                    if (_infoBufferRead == 6) {
+                        _infoBufferRead = 0;
+
+                        _isRespond = (_infoBuffer[_infoBufferRead] & 128) != 0;
+
+                        _requestTypeId = 0;
                         if ((_infoBuffer[_infoBufferRead] & 64) == 0) {
-                            _infoBuffer[_infoBufferRead] &= 63;
-                            _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 16;
+                            _requestTypeId = (_infoBuffer[_infoBufferRead++] & 63);
+                        } else {
+                            _requestTypeId |= (_infoBuffer[_infoBufferRead++] & 63) << 8;
+                            _requestTypeId |= (_infoBuffer[_infoBufferRead++] & 0xff);
+                        }
+
+                        _requestId = 0;
+                        if ((_infoBuffer[_infoBufferRead] & 128) == 0) {
                             _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 8;
                             _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff);
                         } else {
-                            _infoBuffer[_infoBufferRead] &= 63;
-                            _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 24;
-                            _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 16;
-                            _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 8;
-                            _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff);
+                            if ((_infoBuffer[_infoBufferRead] & 64) == 0) {
+                                _requestId |= (_infoBuffer[_infoBufferRead++] & 63) << 16;
+                                _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 8;
+                                _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff);
+                            } else {
+                                _requestId |= (_infoBuffer[_infoBufferRead++] & 63) << 24;
+                                _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 16;
+                                _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 8;
+                                _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff);
+                            }
+                        }
+
+                        _crc32.update(_infoBuffer, 0, _infoBufferRead);
+                        _content = new byte[_packetLength];
+
+                        if (_infoBufferRead != 6) {
+                            int _newBufferRead = fillContent(_infoBuffer, _infoBufferRead, 6);
+                            if (_contentRead == _packetLength) {
+                                _crc32.update(_content);
+                            }
+                            if (_newBufferRead != 6) {
+                                _newBufferRead = fillCRCBuffer(_infoBuffer, _newBufferRead, 6);
+                            }
+                            if (_newBufferRead != 6) {
+                                LOG.log(Level.SEVERE, "infoBuffer not consumed");
+                            }
                         }
                     }
-
-                    _crc32.update(_infoBuffer, 0, _infoBufferRead);
-                    _content = new byte[_packetLength];
-
-                    if (_infoBufferRead != 6) {
-                        int _newBufferRead = fillContent(_infoBuffer, _infoBufferRead, 6);
-                        if (_newBufferRead != 6) {
-                            _newBufferRead = fillCRCBuffer(_infoBuffer, _newBufferRead, 6);
-                        }
-                        if (_newBufferRead != 6) {
-                            LOG.log(Level.SEVERE, "infoBuffer not consumed");
-                        }
-                    }
                 }
-            }
-            if (_requestTypeId == -1) {
-                return;
-            }
-            //</editor-fold>
-
-            //<editor-fold defaultstate="collapsed" desc="read content">
-            if (_contentRead != _packetLength) {
-                start = fillContent(b, start, end);
-
-                if (_contentRead == _packetLength) {
-                    _crc32.update(_content);
-                }
-            }
-            if (_contentRead != _packetLength) {
-                return;
-            }
-            //</editor-fold>
-
-            //<editor-fold defaultstate="collapsed" desc="read crc32">
-            if (_crcBufferRead != 4) {
-                start = fillCRCBuffer(b, start, end);
-
-                if (_crcBufferRead == 4) {
-                    packetStarted = false;
-
-                    long crc32 = 0;
-                    crc32 |= (_crcBuffer[0] & 0xff) << 24;
-                    crc32 |= (_crcBuffer[1] & 0xff) << 16;
-                    crc32 |= (_crcBuffer[2] & 0xff) << 8;
-                    crc32 |= (_crcBuffer[3] & 0xff);
-
-                    _crcMatched = crc32 == _crc32.getValue();
-                }
-            }
-            if (_crcBufferRead != 4) {
-                return;
-            }
-            //</editor-fold>
-
-            if (_crcMatched) {
-                Object content = null;
-                try {
-                    content = parser.parse(_content);
-                } catch (InvalidFormatException ex) {
-                    LOG.log(Level.SEVERE, null, ex);
+                if (_requestTypeId == -1) {
                     return;
                 }
+                //</editor-fold>
 
-                if (_isRespond) {
-                    RPCRequest request = requestList.remove(_requestId);
-                    if (request != null) {
-                        request.respondContent = content;
-                        synchronized (request) {
-                            request.notifyAll();
-                        }
-                    }
-                } else {
-                    RPCRegistryMethod method = localMethodMap[_requestTypeId];
-                    if (method == null) {
-                        LOG.log(Level.SEVERE, "method with requestTypeId {0} not found", new Object[]{_requestTypeId});
-                        return;
-                    }
+                //<editor-fold defaultstate="collapsed" desc="read content">
+                if (_contentRead != _packetLength) {
+                    start = fillContent(b, start, end);
 
-                    Object respond = null;
+                    if (_contentRead == _packetLength) {
+                        _crc32.update(_content);
+                    }
+                }
+                if (_contentRead != _packetLength) {
+                    return;
+                }
+                //</editor-fold>
+
+                //<editor-fold defaultstate="collapsed" desc="read crc32">
+                if (_crcBufferRead != 4) {
+                    start = fillCRCBuffer(b, start, end);
+
+                    if (_crcBufferRead == 4) {
+                        packetStarted = false;
+
+                        long crc32 = 0;
+                        crc32 |= ((long) _crcBuffer[0] & 0xff) << 24;
+                        crc32 |= (_crcBuffer[1] & 0xff) << 16;
+                        crc32 |= (_crcBuffer[2] & 0xff) << 8;
+                        crc32 |= (_crcBuffer[3] & 0xff);
+
+                        long crc32Value = _crc32.getValue();
+                        _crcMatched = crc32 == crc32Value;
+                    }
+                }
+                if (_crcBufferRead != 4) {
+                    return;
+                }
+                //</editor-fold>
+
+                if (_crcMatched) {
+                    Object content = null;
                     try {
-                        respond = invoke(_requestTypeId, ((List<Object>) content).toArray());
-                    } catch (ClassCastException ex) {
+                        content = parser.parse(_content);
+                    } catch (InvalidFormatException ex) {
                         LOG.log(Level.SEVERE, null, ex);
                         return;
                     }
 
-                    if (!method.noRespond) {
+                    if (_isRespond) {
+                        RPCRequest request = requestList.remove(_requestId);
+                        if (request != null) {
+                            if (!(content instanceof List)) {
+                                LOG.log(Level.SEVERE, "respond is not a list");
+                                return;
+                            }
+                            List<Object> contentList = ((List<Object>) content);
+                            if (contentList.size() != 1) {
+                                LOG.log(Level.SEVERE, "size of the respond list is incorrect");
+                                return;
+                            }
+                            request.respondContent = contentList.get(0);
+                            synchronized (request) {
+                                request.notifyAll();
+                            }
+                        }
+                    } else {
+                        RPCRegistryMethod method = localMethodMap[_requestTypeId];
+                        if (method == null) {
+                            LOG.log(Level.SEVERE, "method with requestTypeId {0} not found", new Object[]{_requestTypeId});
+                            return;
+                        }
+
+                        Object respond = null;
                         try {
-                            respond(_requestId, _requestTypeId, respond);
-                        } catch (UnsupportedDataTypeException ex) {
+                            respond = invoke(_requestTypeId, ((List<Object>) content).toArray());
+                        } catch (ClassCastException ex) {
                             LOG.log(Level.SEVERE, null, ex);
+                            return;
+                        }
+
+                        if (!method.noRespond) {
+                            try {
+                                respond(_requestId, _requestTypeId, respond);
+                            } catch (UnsupportedDataTypeException ex) {
+                                LOG.log(Level.SEVERE, null, ex);
+                            }
                         }
                     }
+                } else {
+                    // crc failed, put the packet (except the header) back for reading again
+                    refeed();
                 }
-            } else {
-                // crc failed, put the packet (except the header) back for reading again
-                refeed();
-            }
-
-            if (start != end) {
-                feed(b, start, end - start);
+            } finally {
+                if (start != end) {
+                    feed(b, start, end - start);
+                }
             }
         }
 
