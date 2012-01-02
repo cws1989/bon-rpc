@@ -152,6 +152,18 @@ public class RPC implements RemoteInput {
         int sendBufferIndex = 0;
         byte[] sendBuffer = new byte[6];
 
+        // first bit is the packet type, 0 for send, 1 for respond
+        sendBuffer[sendBufferIndex] = isRespond ? (byte) 128 : (byte) 0;
+
+        if (requestTypeId <= 63) {
+            sendBuffer[sendBufferIndex++] |= (byte) (requestTypeId & 0xff);
+        } else {
+            // max: 16383
+            sendBuffer[sendBufferIndex] |= (byte) ((requestTypeId >> 8) & 0xff);
+            sendBuffer[sendBufferIndex++] |= 64;
+            sendBuffer[sendBufferIndex++] = (byte) (requestTypeId & 0xff);
+        }
+
         if (requestId != 0) {
             if (requestId <= 32767) {
                 sendBuffer[sendBufferIndex++] = (byte) ((requestId >> 8) & 0xff);
@@ -173,18 +185,6 @@ public class RPC implements RemoteInput {
                 sendBuffer[sendBufferIndex++] = (byte) (requestId & 0xff);
             }
         }
-
-        // first bit is the packet type, 0 for send, 1 for respond
-        sendBuffer[sendBufferIndex] = isRespond ? (byte) 128 : (byte) 0;
-
-        if (requestTypeId <= 63) {
-            sendBuffer[sendBufferIndex++] |= (byte) (requestTypeId & 0xff);
-        } else {
-            // max: 16383
-            sendBuffer[sendBufferIndex] |= (byte) ((requestTypeId >> 8) & 0xff);
-            sendBuffer[sendBufferIndex++] |= 64;
-            sendBuffer[sendBufferIndex++] = (byte) (requestTypeId & 0xff);
-        }
         //</editor-fold>
 
         byte[] content = CodecFactory.getGenerator().generate(Arrays.asList(args));
@@ -194,7 +194,17 @@ public class RPC implements RemoteInput {
 
         //<editor-fold defaultstate="collapsed" desc="prepare packet">
         int packetLength = content.length;
-        int byteLength = 2 + (packetLength <= 32767 ? 2 : 4) + sendBufferIndex + content.length + 4;
+        int packetLengthByteLength = 0;
+        if (packetLength <= 255) {
+            packetLengthByteLength = 2;
+        } else if (packetLength <= 32767) {
+            packetLengthByteLength = 4;
+        } else if (packetLength <= 65535) {
+            packetLengthByteLength = 12;
+        } else {
+            packetLengthByteLength = 16;
+        }
+        int byteLength = 2 + packetLengthByteLength + sendBufferIndex + content.length + 4;
 
         int packetBufferIndex = 0;
         byte[] packetBuffer = new byte[byteLength];
@@ -205,12 +215,24 @@ public class RPC implements RemoteInput {
         if (packetLength <= 32767) {
             packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 8);
             packetBuffer[packetBufferIndex++] = (byte) (packetLength);
+            if (packetLength > 255) {
+                packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 8);
+                packetBuffer[packetBufferIndex++] = (byte) (packetLength);
+            }
         } else {
             packetBuffer[packetBufferIndex] = (byte) (packetLength >> 24);
             packetBuffer[packetBufferIndex++] |= 128;
             packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 16);
             packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 8);
             packetBuffer[packetBufferIndex++] = (byte) (packetLength);
+
+            int iEnd = packetLength <= 65535 ? 2 : 3;
+            for (int i = 0; i < iEnd; i++) {
+                packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 24);
+                packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 16);
+                packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 8);
+                packetBuffer[packetBufferIndex++] = (byte) (packetLength);
+            }
         }
 
         System.arraycopy(sendBuffer, 0, packetBuffer, packetBufferIndex, sendBufferIndex);
@@ -327,8 +349,10 @@ public class RPC implements RemoteInput {
         //
         protected boolean packetStarted = false;
         protected int _headerRead = 0;
-        protected final byte[] _buffer = new byte[10];
-        protected int _bufferRead = 0;
+        protected final byte[] _packetLengthBuffer = new byte[16];
+        protected int _packetLengthBufferRead = 0;
+        protected final byte[] _infoBuffer = new byte[6];
+        protected int _infoBufferRead = 0;
         protected int _packetLength = -1;
         protected int _requestId = -1;
         protected boolean _isRespond = false;
@@ -358,7 +382,8 @@ public class RPC implements RemoteInput {
                             packetStarted = true;
                             _headerRead = 0;
 
-                            _bufferRead = 0;
+                            _packetLengthBufferRead = 0;
+                            _infoBufferRead = 0;
                             _packetLength = -1;
                             _requestId = -1;
                             _isRespond = false;
@@ -383,63 +408,145 @@ public class RPC implements RemoteInput {
             }
             //</editor-fold>
 
-            //<editor-fold defaultstate="collapsed" desc="read packetLength, requestId, isRespond and requestTypeId">
-            if (_requestTypeId == -1) {
-                start = fillBuffer(b, start, end);
-                if (_bufferRead == 10) {
-                    _bufferRead = 0;
+            //<editor-fold defaultstate="collapsed" desc="read packetLength">
+            if (_packetLength == -1) {
+                if (_packetLengthBufferRead == 0) {
+                    start = fillPacketLengthBuffer(b, start, end, 2);
+                }
 
-                    if ((_buffer[_bufferRead] & 128) == 0) {
-                        _packetLength |= (_buffer[_bufferRead++] & 0xff) << 8;
-                        _packetLength |= (_buffer[_bufferRead++] & 0xff);
+                if (_packetLengthBufferRead >= 2) {
+                    do {
+                        if ((_packetLengthBuffer[0] & 128) == 0) {
+                            int _packetLength_1 = 0;
+                            _packetLength_1 |= (_packetLengthBuffer[0] & 0xff) << 8;
+                            _packetLength_1 |= (_packetLengthBuffer[1] & 0xff);
+
+                            if (_packetLength_1 > 255) {
+                                start = fillPacketLengthBuffer(b, start, end, 4);
+                                if (_packetLengthBufferRead < 4) {
+                                    break;
+                                }
+
+                                int _packetLength_2 = 0;
+                                _packetLength_2 |= (_packetLengthBuffer[2] & 0xff) << 8;
+                                _packetLength_2 |= (_packetLengthBuffer[3] & 0xff);
+                                if (_packetLength_1 != _packetLength_2) {
+                                    refeed();
+                                    break;
+                                }
+                            }
+
+                            _packetLength = _packetLength_1;
+                        } else {
+                            start = fillPacketLengthBuffer(b, start, end, 12);
+                            if (_packetLengthBufferRead < 12) {
+                                break;
+                            }
+
+                            int _packetLength_1 = 0;
+                            _packetLength_1 |= (_packetLengthBuffer[0] & 127) << 24;
+                            _packetLength_1 |= (_packetLengthBuffer[1] & 0xff) << 16;
+                            _packetLength_1 |= (_packetLengthBuffer[2] & 0xff) << 8;
+                            _packetLength_1 |= (_packetLengthBuffer[3] & 0xff);
+
+                            if (_packetLength_1 <= 32767) {
+                                refeed();
+                                break;
+                            }
+
+                            int _packetLength_2 = 0;
+                            _packetLength_2 |= (_packetLengthBuffer[4] & 0xff) << 24;
+                            _packetLength_2 |= (_packetLengthBuffer[5] & 0xff) << 16;
+                            _packetLength_2 |= (_packetLengthBuffer[6] & 0xff) << 8;
+                            _packetLength_2 |= (_packetLengthBuffer[7] & 0xff);
+                            if (_packetLength_1 != _packetLength_2) {
+                                refeed();
+                                break;
+                            }
+
+                            _packetLength_2 = 0;
+                            _packetLength_2 |= (_packetLengthBuffer[8] & 0xff) << 24;
+                            _packetLength_2 |= (_packetLengthBuffer[9] & 0xff) << 16;
+                            _packetLength_2 |= (_packetLengthBuffer[10] & 0xff) << 8;
+                            _packetLength_2 |= (_packetLengthBuffer[11] & 0xff);
+                            if (_packetLength_1 != _packetLength_2) {
+                                refeed();
+                                break;
+                            }
+
+                            if (_packetLength_1 > 65535) {
+                                start = fillPacketLengthBuffer(b, start, end, 16);
+                                if (_packetLengthBufferRead < 16) {
+                                    break;
+                                }
+
+                                _packetLength_2 = 0;
+                                _packetLength_2 |= (_packetLengthBuffer[12] & 0xff) << 24;
+                                _packetLength_2 |= (_packetLengthBuffer[13] & 0xff) << 16;
+                                _packetLength_2 |= (_packetLengthBuffer[14] & 0xff) << 8;
+                                _packetLength_2 |= (_packetLengthBuffer[15] & 0xff);
+                                if (_packetLength_1 != _packetLength_2) {
+                                    refeed();
+                                    break;
+                                }
+                            }
+
+                            _packetLength = _packetLength_1;
+                        }
+                        break;
+                    } while (true);
+                }
+            }
+            if (_packetLength == -1) {
+                return;
+            }
+            //</editor-fold>
+
+            //<editor-fold defaultstate="collapsed" desc="read isRespond, requestTypeId and requestId">
+            if (_requestTypeId == -1) {
+                start = fillInfoBuffer(b, start, end);
+                if (_infoBufferRead == 6) {
+                    _infoBufferRead = 0;
+
+                    _isRespond = (_infoBuffer[_infoBufferRead] & 128) != 0;
+
+                    if ((_infoBuffer[_infoBufferRead] & 64) == 0) {
+                        _infoBuffer[_infoBufferRead] &= 63;
+                        _requestTypeId = (_infoBuffer[_infoBufferRead++] & 0xff);
                     } else {
-                        _buffer[_bufferRead] &= 127;
-                        _packetLength |= (_buffer[_bufferRead++] & 0xff) << 24;
-                        _packetLength |= (_buffer[_bufferRead++] & 0xff) << 16;
-                        _packetLength |= (_buffer[_bufferRead++] & 0xff) << 8;
-                        _packetLength |= (_buffer[_bufferRead++] & 0xff);
+                        _infoBuffer[_infoBufferRead] &= 63;
+                        _requestTypeId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 8;
+                        _requestTypeId |= (_infoBuffer[_infoBufferRead++] & 0xff);
                     }
 
-
-                    if ((_buffer[_bufferRead] & 128) == 0) {
-                        _requestId |= (_buffer[_bufferRead++] & 0xff) << 8;
-                        _requestId |= (_buffer[_bufferRead++] & 0xff);
+                    if ((_infoBuffer[_infoBufferRead] & 128) == 0) {
+                        _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 8;
+                        _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff);
                     } else {
-                        if ((_buffer[_bufferRead] & 64) == 0) {
-                            _buffer[_bufferRead] &= 63;
-                            _requestId |= (_buffer[_bufferRead++] & 0xff) << 16;
-                            _requestId |= (_buffer[_bufferRead++] & 0xff) << 8;
-                            _requestId |= (_buffer[_bufferRead++] & 0xff);
+                        if ((_infoBuffer[_infoBufferRead] & 64) == 0) {
+                            _infoBuffer[_infoBufferRead] &= 63;
+                            _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 16;
+                            _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 8;
+                            _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff);
                         } else {
-                            _buffer[_bufferRead] &= 63;
-                            _requestId |= (_buffer[_bufferRead++] & 0xff) << 24;
-                            _requestId |= (_buffer[_bufferRead++] & 0xff) << 16;
-                            _requestId |= (_buffer[_bufferRead++] & 0xff) << 8;
-                            _requestId |= (_buffer[_bufferRead++] & 0xff);
+                            _infoBuffer[_infoBufferRead] &= 63;
+                            _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 24;
+                            _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 16;
+                            _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff) << 8;
+                            _requestId |= (_infoBuffer[_infoBufferRead++] & 0xff);
                         }
                     }
 
-                    _isRespond = (_buffer[_bufferRead] & 128) != 0;
-
-                    if ((_buffer[_bufferRead] & 64) == 0) {
-                        _buffer[_bufferRead] &= 63;
-                        _requestTypeId = (_buffer[_bufferRead++] & 0xff);
-                    } else {
-                        _buffer[_bufferRead] &= 63;
-                        _requestTypeId |= (_buffer[_bufferRead++] & 0xff) << 8;
-                        _requestTypeId |= (_buffer[_bufferRead++] & 0xff);
-                    }
-
-                    _crc32.update(_buffer, 0, _bufferRead);
+                    _crc32.update(_infoBuffer, 0, _infoBufferRead);
                     _content = new byte[_packetLength];
 
-                    if (_bufferRead != 10) {
-                        int _newBufferRead = fillContent(_buffer, _bufferRead, 10);
-                        if (_newBufferRead != 10) {
-                            _newBufferRead = fillCRCBuffer(_buffer, _newBufferRead, 10);
+                    if (_infoBufferRead != 6) {
+                        int _newBufferRead = fillContent(_infoBuffer, _infoBufferRead, 6);
+                        if (_newBufferRead != 6) {
+                            _newBufferRead = fillCRCBuffer(_infoBuffer, _newBufferRead, 6);
                         }
-                        if (_newBufferRead != 10) {
-                            LOG.log(Level.SEVERE, "buffer not consumed");
+                        if (_newBufferRead != 6) {
+                            LOG.log(Level.SEVERE, "infoBuffer not consumed");
                         }
                     }
                 }
@@ -525,18 +632,7 @@ public class RPC implements RemoteInput {
                 }
             } else {
                 // crc failed, put the packet (except the header) back for reading again
-
-                byte[] __buffer = new byte[_bufferRead];
-                System.arraycopy(_buffer, 0, __buffer, 0, _bufferRead);
-                feed(__buffer, 0, _bufferRead);
-
-                byte[] __content = new byte[_packetLength];
-                System.arraycopy(_content, 0, __content, 0, _packetLength);
-                feed(__content, 0, _packetLength);
-
-                byte[] __crcBuffer = new byte[4];
-                System.arraycopy(_crcBuffer, 0, __crcBuffer, 0, 4);
-                feed(__crcBuffer, 0, 4);
+                refeed();
             }
 
             if (start != end) {
@@ -544,20 +640,72 @@ public class RPC implements RemoteInput {
             }
         }
 
-        protected int fillBuffer(byte[] b, int start, int end) {
+        protected void refeed() throws IOException {
+            do {
+                if (_packetLengthBufferRead == 0) {
+                    break;
+                }
+                byte[] __packetLengthBuffer = new byte[_packetLengthBufferRead];
+                System.arraycopy(_packetLengthBuffer, 0, __packetLengthBuffer, 0, _packetLengthBufferRead);
+                feed(__packetLengthBuffer, 0, _packetLengthBufferRead);
+
+                if (_infoBufferRead == 0) {
+                    break;
+                }
+                byte[] __infoBuffer = new byte[_infoBufferRead];
+                System.arraycopy(_infoBuffer, 0, __infoBuffer, 0, _infoBufferRead);
+                feed(__infoBuffer, 0, _infoBufferRead);
+
+                if (_packetLength == 0) {
+                    break;
+                }
+                byte[] __content = new byte[_packetLength];
+                System.arraycopy(_content, 0, __content, 0, _packetLength);
+                feed(__content, 0, _packetLength);
+
+                if (_crcBufferRead == 0) {
+                    break;
+                }
+                byte[] __crcBuffer = new byte[_crcBufferRead];
+                System.arraycopy(_crcBuffer, 0, __crcBuffer, 0, _crcBufferRead);
+                feed(__crcBuffer, 0, _crcBufferRead);
+
+                break;
+            } while (true);
+        }
+
+        protected int fillPacketLengthBuffer(byte[] b, int start, int end, int fillSize) {
             // b != null
             // start >= 0, end >= 0, end <= start
-            // _bufferRead >= 0, _bufferRead <= 10
+            // _packetLengthBufferRead >= 0, _packetLengthBufferRead <= fillSize
+            // fillSize <= 16
             int maxLength = end - start;
-            int byteToRead = 10 - _bufferRead;
+            int byteToRead = fillSize - _packetLengthBufferRead;
             if (maxLength < byteToRead) {
                 byteToRead = maxLength;
             }
             if (byteToRead == 0) {
                 return start;
             }
-            System.arraycopy(b, start, _buffer, _bufferRead, byteToRead);
-            _bufferRead += byteToRead;
+            System.arraycopy(b, start, _packetLengthBuffer, _packetLengthBufferRead, byteToRead);
+            _packetLengthBufferRead += byteToRead;
+            return start + byteToRead;
+        }
+
+        protected int fillInfoBuffer(byte[] b, int start, int end) {
+            // b != null
+            // start >= 0, end >= 0, end <= start
+            // _packetLengthBufferRead >= 0, _packetLengthBufferRead <= 6
+            int maxLength = end - start;
+            int byteToRead = 6 - _infoBufferRead;
+            if (maxLength < byteToRead) {
+                byteToRead = maxLength;
+            }
+            if (byteToRead == 0) {
+                return start;
+            }
+            System.arraycopy(b, start, _infoBuffer, _infoBufferRead, byteToRead);
+            _infoBufferRead += byteToRead;
             return start + byteToRead;
         }
 
