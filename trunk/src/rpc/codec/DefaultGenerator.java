@@ -19,7 +19,7 @@ public class DefaultGenerator implements Generator {
     protected static final long UNSIGNED_4BYTES_MAX = 4294967295L;
     protected static final long UNSIGNED_6BYTES_MAX = 281474976710655L;
     protected OutputStream out;
-    private byte[] buffer = new byte[9];
+    private final byte[] buffer = new byte[9];
 
     protected DefaultGenerator() {
     }

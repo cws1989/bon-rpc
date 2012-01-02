@@ -16,10 +16,10 @@ import javassist.NotFoundException;
 public class RPCRegistry {
 
     private static final Logger LOG = Logger.getLogger(RPCRegistry.class.getName());
-    protected List<RPCRegistryMethod> localMethodRegistry;
-    protected List<RPCRegistryMethod> remoteMethodRegistry;
-    protected Map<Class<?>, Integer> registeredLocalClasses;
-    protected Map<Class<?>, Integer> registeredRemoteClasses;
+    protected final List<RPCRegistryMethod> localMethodRegistry;
+    protected final List<RPCRegistryMethod> remoteMethodRegistry;
+    protected final Map<Class<?>, Integer> registeredLocalClasses;
+    protected final Map<Class<?>, Integer> registeredRemoteClasses;
 
     public RPCRegistry() {
         localMethodRegistry = new ArrayList<RPCRegistryMethod>();

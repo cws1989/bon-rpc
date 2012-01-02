@@ -20,7 +20,7 @@ public class DefaultParser implements Parser {
     private static final Logger LOG = Logger.getLogger(DefaultParser.class.getName());
     protected InputStream in;
     private int byteRead = 0;
-    private byte[] buffer = new byte[8];
+    private final byte[] buffer = new byte[8];
 
     protected DefaultParser() {
     }
