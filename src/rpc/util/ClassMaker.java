@@ -92,14 +92,15 @@ public class ClassMaker {
             // return (returnTypeCasting)
             methodBody.append("\t");
             if (!method.getReturnType().equals(void.class)) {
-                methodBody.append("return ($r) ");
+                methodBody.append("try {\n");
+                methodBody.append("\treturn ($r) ");
             }
 
             // read annotations
-            int requestId = -1;
+            int requestTypeId = -1;
             RequestTypeId requestTypeIdAnnotation = method.getAnnotation(RequestTypeId.class);
             if (requestTypeIdAnnotation != null && requestTypeIdAnnotation.value() > 0) {
-                requestId = requestTypeIdAnnotation.value();
+                requestTypeId = requestTypeIdAnnotation.value();
             } else {
                 continue;
             }
@@ -123,12 +124,17 @@ public class ClassMaker {
 
             // this.rpc.send(requestId, objects, respond, blocking); }
             methodBody.append("this.rpc.send(");
-            methodBody.append(requestId);
+            methodBody.append(requestTypeId);
             methodBody.append(", objects, ");
             methodBody.append(respond);
             methodBody.append(", ");
             methodBody.append(blocking);
             methodBody.append(");");
+
+            if (!method.getReturnType().equals(void.class)) {
+                methodBody.append("\n} catch (ClassCastException ex) { Logger.getLogger(this.getClass().getName()).log(Level.SEVERE, null, ex); }");
+            }
+
             methodBody.append("\n");
             methodBody.append("}");
 
@@ -151,9 +157,4 @@ public class ClassMaker {
 
         void setRPC(RPC rpc);
     }
-//    public static void main(String[] args) throws CannotCompileException, NotFoundException, IllegalAccessException, InstantiationException {
-//        RemoteInterface remoteInterface = makeInstance(RemoteInterface.class, RPC.class, null);
-//        Class<?> clazz = makeClass(RemoteInterface.class, RPC.class);
-//        RemoteInterface remoteInterface = (RemoteInterface) clazz.newInstance();
-//    }
 }
