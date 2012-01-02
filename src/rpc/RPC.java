@@ -47,7 +47,7 @@ public class RPC implements RemoteInput {
     protected RPCRegistryMethod[] localMethodMap;
     protected Map<Class<?>, Object> remoteImplementations;
     //
-    protected Generator generator;
+    protected final Generator generator;
     protected Parser parser;
 
     protected RPC(List<RPCRegistryMethod> localMethodRegistry, List<RPCRegistryMethod> remoteMethodRegistry,
@@ -68,7 +68,7 @@ public class RPC implements RemoteInput {
         generator = CodecFactory.getGenerator();
         parser = CodecFactory.getParser();
 
-        // local
+        //<editor-fold defaultstate="collapsed" desc="local">
         int localMethodTypeIdMax = 0;
         for (RPCRegistryMethod method : localMethodRegistry) {
             RequestTypeId requestTypeId = method.method.getAnnotation(RequestTypeId.class);
@@ -108,8 +108,9 @@ public class RPC implements RemoteInput {
             }
             localMethodMap[requestTypeId.value()] = method;
         }
+        //</editor-fold>
 
-        // remote
+        //<editor-fold defaultstate="collapsed" desc="remote">
         List<Integer> requestTypeIdList = new ArrayList<Integer>();
         remoteImplementations = new HashMap<Class<?>, Object>();
         for (Class<?> objClass : registeredRemoteClasses.keySet()) {
@@ -127,6 +128,7 @@ public class RPC implements RemoteInput {
             }
             remoteImplementations.put(objClass, ClassMaker.makeInstance(objClass, RPC.class, this));
         }
+        //</editor-fold>
     }
 
     public void setRemoteOutput(RemoteOutput out) {
@@ -134,6 +136,17 @@ public class RPC implements RemoteInput {
     }
 
     protected Object send(int requestTypeId, Object[] args, boolean respond, boolean blocking)
+            throws IOException, UnsupportedDataTypeException {
+        int requestId = respond ? requestIdIncrementor.incrementAndGet() : 0;
+        return genericSend(false, requestId, requestTypeId, args, respond, blocking);
+    }
+
+    protected void respond(int requestId, int requestTypeId, Object respond)
+            throws IOException, UnsupportedDataTypeException {
+        genericSend(true, requestId, requestTypeId, new Object[]{respond}, false, false);
+    }
+
+    protected Object genericSend(boolean isRespond, int requestId, int requestTypeId, Object[] args, boolean respond, boolean blocking)
             throws IOException, UnsupportedDataTypeException {
         if (out == null) {
             throw new IOException("RemoteOutput is not set");
@@ -143,9 +156,7 @@ public class RPC implements RemoteInput {
         int sendBufferIndex = 0;
         byte[] sendBuffer = new byte[6];
 
-        int requestId = 0;
         if (respond) {
-            requestId = requestIdIncrementor.incrementAndGet();
             if (requestId <= 32767) {
                 sendBuffer[sendBufferIndex++] = (byte) ((requestId >> 8) & 0xff);
                 // first bit is 0
@@ -168,17 +179,22 @@ public class RPC implements RemoteInput {
         }
 
         // first bit is the packet type, 0 for send, 1 for respond
+        sendBuffer[sendBufferIndex] = isRespond ? (byte) 128 : (byte) 0;
+
         if (requestTypeId <= 63) {
-            sendBuffer[sendBufferIndex++] = (byte) (requestTypeId & 0xff);
+            sendBuffer[sendBufferIndex++] |= (byte) (requestTypeId & 0xff);
         } else {
             // max: 16383
-            sendBuffer[sendBufferIndex] = (byte) ((requestTypeId >> 8) & 0xff);
+            sendBuffer[sendBufferIndex] |= (byte) ((requestTypeId >> 8) & 0xff);
             sendBuffer[sendBufferIndex++] |= 64;
             sendBuffer[sendBufferIndex++] = (byte) (requestTypeId & 0xff);
         }
         //</editor-fold>
 
-        byte[] content = generator.generate(Arrays.asList(args));
+        byte[] content = null;
+        synchronized (generator) {
+            content = generator.generate(Arrays.asList(args));
+        }
 
         //<editor-fold defaultstate="collapsed" desc="prepare packet">
         int packetLength = content.length;
@@ -218,7 +234,7 @@ public class RPC implements RemoteInput {
         packetBuffer[packetBufferIndex++] = (byte) (crc32Value);
         //</editor-fold>
 
-        final RPCRequest request = new RPCRequest(requestId, System.currentTimeMillis());
+        RPCRequest request = new RPCRequest(requestId, System.currentTimeMillis());
         if (respond) {
             requestList.put(byteLength, request);
         }
@@ -309,48 +325,60 @@ public class RPC implements RemoteInput {
         }
     }
     protected boolean packetStarted = false;
+    protected int _headerRead = 0;
     protected byte[] _buffer = new byte[10];
     protected int _bufferRead = 0;
     protected int _packetLength = -1;
     protected int _requestId = -1;
+    protected boolean _isRespond = false;
     protected int _requestTypeId = -1;
     protected byte[] _content;
     protected int _contentRead = 0;
+    protected byte[] _crcBuffer = new byte[4];
+    protected int _crcBufferRead = 0;
     protected CRC32 _crc32 = new CRC32();
 
     @Override
     public void feed(byte[] b, int offset, int length) throws IOException {
         int start = offset, end = offset + length;
 
+        //<editor-fold defaultstate="collapsed" desc="read packet header">
         if (!packetStarted) {
             while (start < end) {
-                if (b[start] == packetHeader[0]) {
-                    _bufferRead = 1;
-                } else if (_bufferRead == 1 && b[start] == packetHeader[1]) {
-                    packetStarted = true;
+                try {
+                    if (b[start] == packetHeader[0]) {
+                        _headerRead = 1;
+                    } else if (_headerRead == 1 && b[start] == packetHeader[1]) {
+                        packetStarted = true;
+                        _headerRead = 0;
 
-                    _bufferRead = 0;
-                    _packetLength = -1;
-                    _requestId = -1;
-                    _requestTypeId = -1;
-                    _content = null;
-                    _contentRead = 0;
-                    _crc32.reset();
+                        _bufferRead = 0;
+                        _packetLength = -1;
+                        _requestId = -1;
+                        _isRespond = false;
+                        _requestTypeId = -1;
+                        _content = null;
+                        _contentRead = 0;
+                        _crcBufferRead = 0;
+                        _crc32.reset();
 
+                        break;
+                    } else {
+                        _headerRead = 0;
+                    }
+                } finally {
                     start++;
-                    break;
-                } else {
-                    _bufferRead = 0;
                 }
-                start++;
             }
         }
         if (!packetStarted) {
             return;
         }
+        //</editor-fold>
 
+        //<editor-fold defaultstate="collapsed" desc="read packetLength, requestId, isRespond and requestTypeId">
         if (_requestTypeId == -1) {
-            start = fillBuffer(b, start, end, 10);
+            start = fillBuffer(b, start, end);
             if (_bufferRead == 10) {
                 _bufferRead = 0;
 
@@ -382,6 +410,8 @@ public class RPC implements RemoteInput {
                     }
                 }
 
+                _isRespond = (_buffer[_bufferRead] & 128) != 0;
+
                 if ((_buffer[_bufferRead] & 64) == 0) {
                     _buffer[_bufferRead] &= 63;
                     _requestTypeId = (_buffer[_bufferRead++] & 0xff);
@@ -395,27 +425,26 @@ public class RPC implements RemoteInput {
                 _content = new byte[_packetLength];
 
                 if (_bufferRead != 10) {
-                    int byteToRead = 10 - _bufferRead;
-                    if (byteToRead != 0) {
-                        _contentRead = byteToRead;
-                        System.arraycopy(_buffer, _bufferRead, _content, 0, byteToRead);
+                    int _newBufferRead = fillContent(_buffer, _bufferRead, 10);
+
+                    if (_newBufferRead != 10) {
+                        _newBufferRead = fillCRCBuffer(_buffer, _newBufferRead, 10);
+                    }
+
+                    if (_newBufferRead != 10) {
+                        LOG.log(Level.SEVERE, "buffer not consumed");
                     }
                 }
-
-                _bufferRead = 0;
             }
         }
-        if (_bufferRead != 10) {
+        if (_requestTypeId == -1) {
             return;
         }
+        //</editor-fold>
 
+        //<editor-fold defaultstate="collapsed" desc="read content">
         if (_contentRead != _packetLength) {
-            int byteToRead = _packetLength - _contentRead;
-            if (end - start < byteToRead) {
-                byteToRead = end - start;
-            }
-            System.arraycopy(b, start, _buffer, _contentRead, byteToRead);
-            _contentRead += byteToRead;
+            start = fillContent(b, start, end);
 
             if (_contentRead == _packetLength) {
                 _crc32.update(_content);
@@ -424,37 +453,125 @@ public class RPC implements RemoteInput {
         if (_contentRead != _packetLength) {
             return;
         }
+        //</editor-fold>
 
-        start = fillBuffer(b, start, end, 4);
-        if (_bufferRead == 4) {
-            long crc32 = 0;
-            crc32 |= (_buffer[_bufferRead++] & 0xff) << 24;
-            crc32 |= (_buffer[_bufferRead++] & 0xff) << 16;
-            crc32 |= (_buffer[_bufferRead++] & 0xff) << 8;
-            crc32 |= (_buffer[_bufferRead++] & 0xff);
+        //<editor-fold defaultstate="collapsed" desc="read crc32">
+        if (_crcBufferRead != 4) {
+            start = fillCRCBuffer(b, start, end);
 
-            if (crc32 == _crc32.getValue()) {
-                try {
-                    List<Object> parsedResult = (List<Object>) parser.parse(_content);
-                    Object respond = invoke(_requestTypeId, parsedResult.toArray());
-                    // respond according to the requestId
-                } catch (InvalidFormatException ex) {
-                    LOG.log(Level.WARNING, null, ex);
-                } finally {
-                    packetStarted = false;
+            if (_crcBufferRead == 4) {
+                packetStarted = false;
+
+                long crc32 = 0;
+                crc32 |= (_crcBuffer[0] & 0xff) << 24;
+                crc32 |= (_crcBuffer[1] & 0xff) << 16;
+                crc32 |= (_crcBuffer[2] & 0xff) << 8;
+                crc32 |= (_crcBuffer[3] & 0xff);
+
+                if (crc32 == _crc32.getValue()) {
+                    Object content = null;
+                    try {
+                        content = parser.parse(_content);
+                    } catch (InvalidFormatException ex) {
+                        LOG.log(Level.SEVERE, null, ex);
+                        return;
+                    }
+
+                    if (_isRespond) {
+                        RPCRequest request = requestList.remove(_requestId);
+                        if (request != null) {
+                            request.respondContent = content;
+                            synchronized (request) {
+                                request.notifyAll();
+                            }
+                        }
+                    } else {
+                        RPCRegistryMethod method = localMethodMap[_requestTypeId];
+                        if (method == null) {
+                            LOG.log(Level.SEVERE, "method with requestTypeId {0} not found", new Object[]{_requestTypeId});
+                            return;
+                        }
+
+                        Object respond = null;
+                        try {
+                            respond = invoke(_requestTypeId, ((List<Object>) content).toArray());
+                        } catch (ClassCastException ex) {
+                            LOG.log(Level.SEVERE, null, ex);
+                            return;
+                        }
+
+                        if (!method.noRespond) {
+                            try {
+                                respond(_requestId, _requestTypeId, respond);
+                            } catch (UnsupportedDataTypeException ex) {
+                                LOG.log(Level.SEVERE, null, ex);
+                            }
+                        }
+                    }
+                } else {
+                    // crc failed, put the packet (except the header) back for reading again
+
+                    byte[] __buffer = new byte[_bufferRead];
+                    System.arraycopy(_buffer, 0, __buffer, 0, _bufferRead);
+                    feed(__buffer, 0, _bufferRead);
+
+                    byte[] __content = new byte[_packetLength];
+                    System.arraycopy(_content, 0, __content, 0, _packetLength);
+                    feed(__content, 0, _packetLength);
+
+                    byte[] __crcBuffer = new byte[4];
+                    System.arraycopy(_crcBuffer, 0, __crcBuffer, 0, 4);
+                    feed(__crcBuffer, 0, 4);
                 }
             }
         }
+        if (_crcBufferRead != 4) {
+            return;
+        }
+        //</editor-fold>
+
+        if (start != end) {
+            feed(b, start, end - start);
+        }
     }
 
-    protected int fillBuffer(byte[] b, int start, int end, int fillSize) {
-        int byteToRead = fillSize - _bufferRead;
+    protected int fillBuffer(byte[] b, int start, int end) {
+        int byteToRead = 10 - _bufferRead;
         if (end - start < byteToRead) {
             byteToRead = end - start;
         }
+        if (byteToRead == 0) {
+            return start;
+        }
         System.arraycopy(b, start, _buffer, _bufferRead, byteToRead);
         _bufferRead += byteToRead;
-        return start;
+        return start + byteToRead;
+    }
+
+    protected int fillContent(byte[] b, int start, int end) {
+        int byteToRead = _packetLength - _contentRead;
+        if (end - start < byteToRead) {
+            byteToRead = end - start;
+        }
+        if (byteToRead == 0) {
+            return start;
+        }
+        System.arraycopy(b, start, _content, _contentRead, byteToRead);
+        _contentRead += byteToRead;
+        return start + byteToRead;
+    }
+
+    protected int fillCRCBuffer(byte[] b, int start, int end) {
+        int byteToRead = 4 - _crcBufferRead;
+        if (end - start < byteToRead) {
+            byteToRead = end - start;
+        }
+        if (byteToRead == 0) {
+            return start;
+        }
+        System.arraycopy(b, start, _crcBuffer, _crcBufferRead, byteToRead);
+        _crcBufferRead += byteToRead;
+        return start + byteToRead;
     }
 
     protected static class RPCRequest {

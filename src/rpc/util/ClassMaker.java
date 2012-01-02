@@ -116,6 +116,11 @@ public class ClassMaker {
                 blocking = blockingAnnotation.value();
             }
 
+            if (!method.getReturnType().equals(void.class)) {
+                respond = true;
+                blocking = true;
+            }
+
             // this.rpc.send(requestId, objects, respond, blocking); }
             methodBody.append("this.rpc.send(");
             methodBody.append(requestId);

@@ -157,11 +157,11 @@ public class DefaultParser implements Parser {
 
                 return new String(_shortStringBuffer);
             case 13:
-                byteRead = in.read(buffer, 0, 2);
-                if (byteRead != 2) {
-                    throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 2, byteRead));
+                byteRead = in.read(buffer, 0, 3);
+                if (byteRead != 3) {
+                    throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 3, byteRead));
                 }
-                int _longStringLength = ((buffer[0] & 0xff) << 8) | (buffer[1] & 0xff);
+                int _longStringLength = ((buffer[0] & 0xff) << 8) | ((buffer[1] & 0xff) << 8) | (buffer[2] & 0xff);
 
                 byte[] _longStringBuffer = new byte[_longStringLength];
                 byteRead = in.read(_longStringBuffer, 0, _longStringLength);
@@ -185,11 +185,11 @@ public class DefaultParser implements Parser {
 
                 return _shortBinaryBuffer;
             case 15:
-                byteRead = in.read(buffer, 0, 2);
-                if (byteRead != 2) {
-                    throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 2, byteRead));
+                byteRead = in.read(buffer, 0, 3);
+                if (byteRead != 3) {
+                    throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 3, byteRead));
                 }
-                int _longBinaryLength = ((buffer[0] & 0xff) << 8) | (buffer[1] & 0xff);
+                int _longBinaryLength = ((buffer[0] & 0xff) << 8) | ((buffer[1] & 0xff) << 8) | (buffer[2] & 0xff);
 
                 byte[] _longBinaryBuffer = new byte[_longBinaryLength];
                 byteRead = in.read(_longBinaryBuffer, 0, _longBinaryLength);
