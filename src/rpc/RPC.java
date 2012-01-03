@@ -43,6 +43,12 @@ import rpc.util.ClassMaker;
 
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
+ * @todo reuse request id
+ * @todo regular send finished (respond received) request id
+ * @todo keep largest continuous 'sent & responded' request id, 'responded & confirmed (by regular received finished request id)' request id
+ * @todo heart beat
+ * @todo selective sequential receive
+ * @todo retry when failed/no respond received after a period of time
  */
 public class RPC implements RemoteInput {
 
@@ -160,10 +166,43 @@ public class RPC implements RemoteInput {
 
     protected Object genericSend(boolean isRespond, int requestId, int requestTypeId, Object[] args, boolean respond, boolean blocking)
             throws IOException, UnsupportedDataTypeException {
+        byte[] packetData = generatePacket(isRespond, requestId, requestTypeId, args);
+        return genericSend(packetData, requestId, respond, blocking);
+    }
+
+    protected Object genericSend(byte[] packetData, int requestId, boolean respond, boolean blocking) throws IOException {
+        // isolate this out for test purpose
         if (out == null) {
             throw new IOException("RemoteOutput is not set");
         }
 
+        RPCRequest request = new RPCRequest(requestId, System.currentTimeMillis());
+        if (respond) {
+            requestList.put(requestId, request);
+        }
+
+        out.write(packetData);
+
+        if (respond) {
+            if (!blocking) {
+                return null;
+            } else {
+                synchronized (request) {
+                    try {
+                        request.wait();
+                    } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("Thread interruptted when waiting for respond");
+                    }
+                }
+                return request.respondContent;
+            }
+        } else {
+            return null;
+        }
+    }
+
+    protected byte[] generatePacket(boolean isRespond, int requestId, int requestTypeId, Object[] args) throws UnsupportedDataTypeException {
         //<editor-fold defaultstate="collapsed" desc="prepare requestId and requestTypeId">
         int sendBufferIndex = 0;
         byte[] sendBuffer = new byte[6];
@@ -205,7 +244,7 @@ public class RPC implements RemoteInput {
 
         byte[] content = CodecFactory.getGenerator().generate(args == null ? new ArrayList<Object>() : Arrays.asList(args));
         if (content == null) {
-            throw new IOException("error occurred when packing the data");
+            throw new UnsupportedDataTypeException("error occurred when packing the data");
         }
 
         //<editor-fold defaultstate="collapsed" desc="prepare packet">
@@ -231,9 +270,11 @@ public class RPC implements RemoteInput {
         if (packetLength <= 32767) {
             packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 8);
             packetBuffer[packetBufferIndex++] = (byte) (packetLength);
+
+            // redundance for error checking
             if (packetLength > 255) {
-                packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 8);
                 packetBuffer[packetBufferIndex++] = (byte) (packetLength);
+                packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 8);
             }
         } else {
             packetBuffer[packetBufferIndex] = (byte) (packetLength >> 24);
@@ -242,12 +283,13 @@ public class RPC implements RemoteInput {
             packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 8);
             packetBuffer[packetBufferIndex++] = (byte) (packetLength);
 
+            // redundance for error checking
             int iEnd = packetLength <= 65535 ? 2 : 3;
             for (int i = 0; i < iEnd; i++) {
-                packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 24);
-                packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 16);
-                packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 8);
                 packetBuffer[packetBufferIndex++] = (byte) (packetLength);
+                packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 8);
+                packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 16);
+                packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 24);
             }
         }
 
@@ -261,36 +303,13 @@ public class RPC implements RemoteInput {
         crc32.update(content);
 
         long crc32Value = crc32.getValue();
-        packetBuffer[packetBufferIndex++] = (byte) (crc32Value >> 24);
-        packetBuffer[packetBufferIndex++] = (byte) (crc32Value >> 16);
-        packetBuffer[packetBufferIndex++] = (byte) (crc32Value >> 8);
         packetBuffer[packetBufferIndex++] = (byte) (crc32Value);
+        packetBuffer[packetBufferIndex++] = (byte) (crc32Value >> 8);
+        packetBuffer[packetBufferIndex++] = (byte) (crc32Value >> 16);
+        packetBuffer[packetBufferIndex++] = (byte) (crc32Value >> 24);
         //</editor-fold>
 
-        RPCRequest request = new RPCRequest(requestId, System.currentTimeMillis());
-        if (respond) {
-            requestList.put(requestId, request);
-        }
-
-        out.write(packetBuffer);
-
-        if (respond) {
-            if (!blocking) {
-                return null;
-            } else {
-                synchronized (request) {
-                    try {
-                        request.wait();
-                    } catch (InterruptedException ex) {
-                        Thread.currentThread().interrupt();
-                        throw new IOException("Thread interruptted when waiting for respond");
-                    }
-                }
-                return request.respondContent;
-            }
-        } else {
-            return null;
-        }
+        return packetBuffer;
     }
 
     protected Object invoke(int requestTypeId, Object[] args) {
@@ -445,8 +464,8 @@ public class RPC implements RemoteInput {
                                     }
 
                                     int _packetLength_2 = 0;
-                                    _packetLength_2 |= (_packetLengthBuffer[2] & 0xff) << 8;
-                                    _packetLength_2 |= (_packetLengthBuffer[3] & 0xff);
+                                    _packetLength_2 |= (_packetLengthBuffer[2] & 0xff);
+                                    _packetLength_2 |= (_packetLengthBuffer[3] & 0xff) << 8;
                                     if (_packetLength_1 != _packetLength_2) {
                                         refeed();
                                         break;
@@ -472,20 +491,20 @@ public class RPC implements RemoteInput {
                                 }
 
                                 int _packetLength_2 = 0;
-                                _packetLength_2 |= (_packetLengthBuffer[4] & 0xff) << 24;
-                                _packetLength_2 |= (_packetLengthBuffer[5] & 0xff) << 16;
-                                _packetLength_2 |= (_packetLengthBuffer[6] & 0xff) << 8;
-                                _packetLength_2 |= (_packetLengthBuffer[7] & 0xff);
+                                _packetLength_2 |= (_packetLengthBuffer[4] & 0xff);
+                                _packetLength_2 |= (_packetLengthBuffer[5] & 0xff) << 8;
+                                _packetLength_2 |= (_packetLengthBuffer[6] & 0xff) << 16;
+                                _packetLength_2 |= (_packetLengthBuffer[7] & 0xff) << 24;
                                 if (_packetLength_1 != _packetLength_2) {
                                     refeed();
                                     break;
                                 }
 
                                 _packetLength_2 = 0;
-                                _packetLength_2 |= (_packetLengthBuffer[8] & 0xff) << 24;
-                                _packetLength_2 |= (_packetLengthBuffer[9] & 0xff) << 16;
-                                _packetLength_2 |= (_packetLengthBuffer[10] & 0xff) << 8;
-                                _packetLength_2 |= (_packetLengthBuffer[11] & 0xff);
+                                _packetLength_2 |= (_packetLengthBuffer[8] & 0xff);
+                                _packetLength_2 |= (_packetLengthBuffer[9] & 0xff) << 8;
+                                _packetLength_2 |= (_packetLengthBuffer[10] & 0xff) << 16;
+                                _packetLength_2 |= (_packetLengthBuffer[11] & 0xff) << 24;
                                 if (_packetLength_1 != _packetLength_2) {
                                     refeed();
                                     break;
@@ -498,10 +517,10 @@ public class RPC implements RemoteInput {
                                     }
 
                                     _packetLength_2 = 0;
-                                    _packetLength_2 |= (_packetLengthBuffer[12] & 0xff) << 24;
-                                    _packetLength_2 |= (_packetLengthBuffer[13] & 0xff) << 16;
-                                    _packetLength_2 |= (_packetLengthBuffer[14] & 0xff) << 8;
-                                    _packetLength_2 |= (_packetLengthBuffer[15] & 0xff);
+                                    _packetLength_2 |= (_packetLengthBuffer[12] & 0xff);
+                                    _packetLength_2 |= (_packetLengthBuffer[13] & 0xff) << 8;
+                                    _packetLength_2 |= (_packetLengthBuffer[14] & 0xff) << 16;
+                                    _packetLength_2 |= (_packetLengthBuffer[15] & 0xff) << 24;
                                     if (_packetLength_1 != _packetLength_2) {
                                         refeed();
                                         break;
@@ -595,10 +614,10 @@ public class RPC implements RemoteInput {
                         packetStarted = false;
 
                         long crc32 = 0;
-                        crc32 |= ((long) _crcBuffer[0] & 0xff) << 24;
-                        crc32 |= (_crcBuffer[1] & 0xff) << 16;
-                        crc32 |= (_crcBuffer[2] & 0xff) << 8;
-                        crc32 |= (_crcBuffer[3] & 0xff);
+                        crc32 |= (_crcBuffer[0] & 0xff);
+                        crc32 |= (_crcBuffer[1] & 0xff) << 8;
+                        crc32 |= (_crcBuffer[2] & 0xff) << 16;
+                        crc32 |= ((long) (_crcBuffer[3] & 0xff)) << 24;
 
                         long crc32Value = _crc32.getValue();
                         _crcMatched = crc32 == crc32Value;
