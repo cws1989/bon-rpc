@@ -41,10 +41,6 @@ public class DefaultParser implements Parser {
     protected DefaultParser() {
     }
 
-    protected DefaultParser(InputStream inputStream) {
-        this.in = inputStream;
-    }
-
     @Override
     public Object parse(byte[] data) throws InvalidFormatException {
         try {
@@ -57,14 +53,14 @@ public class DefaultParser implements Parser {
 
     @Override
     public Object read(InputStream inputStream) throws IOException, InvalidFormatException {
-        DefaultParser parser = new DefaultParser(inputStream);
+        this.in = inputStream;
 
         int dataType = inputStream.read();
         switch (dataType) {
             case 1:
-                return parser.readMap();
+                return readMap();
             case 2:
-                return parser.readList();
+                return readList();
             default:
                 throw new InvalidFormatException(String.format("dataType '%1$d' not supported", dataType));
         }
@@ -86,10 +82,7 @@ public class DefaultParser implements Parser {
 
         int dataType;
 
-        dataType = in.read();
-        if (dataType == 0) {
-            return returnMap;
-        } else if (dataType == -1) {
+        if ((dataType = in.read()) == -1) {
             throw new InvalidFormatException(String.format("Expected to read %1$d bytes but failed", 1, dataType));
         }
         Object elementName = readItem(dataType);
@@ -248,7 +241,7 @@ public class DefaultParser implements Parser {
         }
 
         if ((header & 0x80) != 0) {
-            returnValue |= 0x80 << 8;
+            returnValue = (short) (-returnValue - 1);
         }
 
         return returnValue;
@@ -299,7 +292,7 @@ public class DefaultParser implements Parser {
         }
 
         if ((header & 0x80) != 0) {
-            returnValue |= 0x80 << 24;
+            returnValue = -returnValue - 1;
         }
 
         return returnValue;
@@ -376,7 +369,7 @@ public class DefaultParser implements Parser {
         }
 
         if ((header & 0x80) != 0) {
-            returnValue |= ((long) 0x80) << 56;
+            returnValue = -returnValue - 1;
         }
 
         return returnValue;

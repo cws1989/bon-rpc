@@ -40,10 +40,6 @@ public class DefaultGenerator implements Generator {
     protected DefaultGenerator() {
     }
 
-    protected DefaultGenerator(OutputStream outputStream) {
-        this.out = outputStream;
-    }
-
     @Override
     public byte[] generate(Object data) throws UnsupportedDataTypeException {
         return generate(32, data);
@@ -62,11 +58,11 @@ public class DefaultGenerator implements Generator {
 
     @Override
     public void write(OutputStream outputStream, Object data) throws IOException, UnsupportedDataTypeException {
-        DefaultGenerator generator = new DefaultGenerator(outputStream);
+        this.out = outputStream;
         if (data instanceof List) {
-            generator.writeList((List<Object>) data);
+            writeList((List<Object>) data);
         } else if (data instanceof Map) {
-            generator.writeMap((Map<Object, Object>) data);
+            writeMap((Map<Object, Object>) data);
         } else {
             throw new UnsupportedDataTypeException();
         }
@@ -98,7 +94,7 @@ public class DefaultGenerator implements Generator {
         if (item instanceof Integer) {
             out.write(buffer, 0, packInt(6, (Integer) item));
         } else if (item instanceof String) {
-            byte[] stringBytes = ((String) item).getBytes();
+            byte[] stringBytes = ((String) item).getBytes("UTF-8");
 
             int stringBytesLength = stringBytes.length;
             if (stringBytesLength <= 255) {
@@ -182,7 +178,7 @@ public class DefaultGenerator implements Generator {
         type |= sign;
 
         if (sign != 0) {
-            d = (short) -d;
+            d = (short) -(d + 1);
         }
 
         if (d <= 255) {
@@ -209,7 +205,7 @@ public class DefaultGenerator implements Generator {
         type |= sign;
 
         if (sign != 0) {
-            _int = -_int;
+            _int = -(_int + 1);
         }
 
         if (_int <= 65535) {
@@ -254,11 +250,11 @@ public class DefaultGenerator implements Generator {
 
     protected int packLong(int type, long d) {
         // record sign
-        int sign = (int) ((d >> 56) & 0x80);
+        int sign = ((int) (d >> 56) & 0x80);
         type |= sign;
 
         if (sign != 0) {
-            d = -d;
+            d = -(d + 1);
         }
 
         if (d <= 16777215) {
