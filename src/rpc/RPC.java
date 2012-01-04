@@ -92,6 +92,7 @@ public class RPC implements RemoteInput {
                 localMethodTypeIdMax = requestTypeId.value();
             }
         }
+
         localMethodMap = new RPCRegistryMethod[localMethodTypeIdMax + 1];
         for (RPCRegistryMethod method : localMethodRegistry) {
             RequestTypeId requestTypeId = method.method.getAnnotation(RequestTypeId.class);
@@ -211,33 +212,33 @@ public class RPC implements RemoteInput {
         sendBuffer[sendBufferIndex] = isRespond ? (byte) 128 : (byte) 0;
 
         if (requestTypeId <= 63) {
-            sendBuffer[sendBufferIndex++] |= (byte) (requestTypeId & 0xff);
+            sendBuffer[sendBufferIndex++] |= (byte) requestTypeId;
         } else {
             // max: 16383
-            sendBuffer[sendBufferIndex] |= (byte) ((requestTypeId >> 8) & 0xff);
+            sendBuffer[sendBufferIndex] |= (byte) (requestTypeId >> 8);
             sendBuffer[sendBufferIndex++] |= 64;
-            sendBuffer[sendBufferIndex++] = (byte) (requestTypeId & 0xff);
+            sendBuffer[sendBufferIndex++] = (byte) requestTypeId;
         }
 
         if (requestId != 0) {
             if (requestId <= 32767) {
-                sendBuffer[sendBufferIndex++] = (byte) ((requestId >> 8) & 0xff);
+                sendBuffer[sendBufferIndex++] = (byte) (requestId >> 8);
                 // first bit is 0
-                sendBuffer[sendBufferIndex++] = (byte) (requestId & 0xff);
+                sendBuffer[sendBufferIndex++] = (byte) requestId;
             } else if (requestId <= 4194303) {
-                sendBuffer[sendBufferIndex] = (byte) ((requestId >> 16) & 0xff);
+                sendBuffer[sendBufferIndex] = (byte) (requestId >> 16);
                 sendBuffer[sendBufferIndex++] |= 128;
                 // first bit is 1, second bit is 0
-                sendBuffer[sendBufferIndex++] = (byte) ((requestId >> 8) & 0xff);
-                sendBuffer[sendBufferIndex++] = (byte) (requestId & 0xff);
+                sendBuffer[sendBufferIndex++] = (byte) (requestId >> 8);
+                sendBuffer[sendBufferIndex++] = (byte) requestId;
             } else {
                 // max: 1073741823
-                sendBuffer[sendBufferIndex] = (byte) ((requestId >> 24) & 0xff);
+                sendBuffer[sendBufferIndex] = (byte) (requestId >> 24);
                 sendBuffer[sendBufferIndex++] |= 192;
                 // first bit is 1, second bit is 1
-                sendBuffer[sendBufferIndex++] = (byte) ((requestId >> 16) & 0xff);
-                sendBuffer[sendBufferIndex++] = (byte) ((requestId >> 8) & 0xff);
-                sendBuffer[sendBufferIndex++] = (byte) (requestId & 0xff);
+                sendBuffer[sendBufferIndex++] = (byte) (requestId >> 16);
+                sendBuffer[sendBufferIndex++] = (byte) (requestId >> 8);
+                sendBuffer[sendBufferIndex++] = (byte) requestId;
             }
         }
         //</editor-fold>
@@ -284,8 +285,8 @@ public class RPC implements RemoteInput {
             packetBuffer[packetBufferIndex++] = (byte) (packetLength);
 
             // redundance for error checking
-            int iEnd = packetLength <= 65535 ? 2 : 3;
-            for (int i = 0; i < iEnd; i++) {
+            int repeatTimes = packetLength <= 65535 ? 2 : 3;
+            while (repeatTimes-- > 0) {
                 packetBuffer[packetBufferIndex++] = (byte) (packetLength);
                 packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 8);
                 packetBuffer[packetBufferIndex++] = (byte) (packetLength >> 16);
@@ -392,7 +393,7 @@ public class RPC implements RemoteInput {
         protected int _requestId = -1;
         protected boolean _isRespond = false;
         protected int _requestTypeId = -1;
-        protected byte[] _content;
+        protected byte[] _content = null;
         protected int _contentRead = 0;
         protected final byte[] _crcBuffer = new byte[4];
         protected int _crcBufferRead = 0;
@@ -416,8 +417,8 @@ public class RPC implements RemoteInput {
                                 _headerRead = 1;
                             } else if (_headerRead == 1 && b[start] == packetHeader[1]) {
                                 packetStarted = true;
-                                _headerRead = 0;
 
+                                _headerRead = 0;
                                 _packetLengthBufferRead = 0;
                                 _infoBufferRead = 0;
                                 _packetLength = -1;
@@ -446,7 +447,7 @@ public class RPC implements RemoteInput {
 
                 //<editor-fold defaultstate="collapsed" desc="read packetLength">
                 if (_packetLength == -1) {
-                    if (_packetLengthBufferRead == 0) {
+                    if (_packetLengthBufferRead <= 1) {
                         start = fillPacketLengthBuffer(b, start, end, 2);
                     }
 
@@ -529,8 +530,7 @@ public class RPC implements RemoteInput {
 
                                 _packetLength = _packetLength_1;
                             }
-                            break;
-                        } while (true);
+                        } while (false);
                     }
                 }
                 if (_packetLength == -1) {
@@ -636,14 +636,14 @@ public class RPC implements RemoteInput {
                         LOG.log(Level.SEVERE, null, ex);
                         return;
                     }
+                    if (!(content instanceof List)) {
+                        LOG.log(Level.SEVERE, "respond is not a list");
+                        return;
+                    }
 
                     if (_isRespond) {
                         RPCRequest request = requestList.remove(_requestId);
                         if (request != null) {
-                            if (!(content instanceof List)) {
-                                LOG.log(Level.SEVERE, "respond is not a list");
-                                return;
-                            }
                             List<Object> contentList = ((List<Object>) content);
                             if (contentList.size() != 1) {
                                 LOG.log(Level.SEVERE, "size of the respond list is incorrect");
@@ -661,13 +661,7 @@ public class RPC implements RemoteInput {
                             return;
                         }
 
-                        Object respond = null;
-                        try {
-                            respond = invoke(_requestTypeId, ((List<Object>) content).toArray());
-                        } catch (ClassCastException ex) {
-                            LOG.log(Level.SEVERE, null, ex);
-                            return;
-                        }
+                        Object respond = invoke(_requestTypeId, ((List<Object>) content).toArray());
 
                         if (!method.noRespond) {
                             try {
@@ -690,36 +684,34 @@ public class RPC implements RemoteInput {
 
         protected void refeed() throws IOException {
             do {
-                if (_packetLengthBufferRead == 0) {
+                if (_packetLengthBufferRead > 0) {
                     break;
                 }
                 byte[] __packetLengthBuffer = new byte[_packetLengthBufferRead];
                 System.arraycopy(_packetLengthBuffer, 0, __packetLengthBuffer, 0, _packetLengthBufferRead);
                 feed(__packetLengthBuffer, 0, _packetLengthBufferRead);
 
-                if (_infoBufferRead == 0) {
+                if (_infoBufferRead > 0) {
                     break;
                 }
                 byte[] __infoBuffer = new byte[_infoBufferRead];
                 System.arraycopy(_infoBuffer, 0, __infoBuffer, 0, _infoBufferRead);
                 feed(__infoBuffer, 0, _infoBufferRead);
 
-                if (_packetLength == 0) {
+                if (_packetLength > 0) {
                     break;
                 }
                 byte[] __content = new byte[_packetLength];
                 System.arraycopy(_content, 0, __content, 0, _packetLength);
                 feed(__content, 0, _packetLength);
 
-                if (_crcBufferRead == 0) {
+                if (_crcBufferRead > 0) {
                     break;
                 }
                 byte[] __crcBuffer = new byte[_crcBufferRead];
                 System.arraycopy(_crcBuffer, 0, __crcBuffer, 0, _crcBufferRead);
                 feed(__crcBuffer, 0, _crcBufferRead);
-
-                break;
-            } while (true);
+            } while (false);
         }
 
         protected int fillPacketLengthBuffer(byte[] b, int start, int end, int fillSize) {

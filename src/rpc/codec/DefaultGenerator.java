@@ -103,9 +103,9 @@ public class DefaultGenerator implements Generator {
                 out.write(buffer, 0, 2);
             } else if (stringBytesLength <= 16777215) {
                 buffer[0] = 13;
-                buffer[1] = (byte) (stringBytesLength >> 16);
+                buffer[1] = (byte) stringBytesLength;
                 buffer[2] = (byte) (stringBytesLength >> 8);
-                buffer[3] = (byte) stringBytesLength;
+                buffer[3] = (byte) (stringBytesLength >> 16);
                 out.write(buffer, 0, 4);
             } else {
                 throw new UnsupportedDataTypeException();
@@ -120,23 +120,23 @@ public class DefaultGenerator implements Generator {
             buffer[0] = (byte) 3;
 
             int _int = Float.floatToRawIntBits((Float) item);
-            buffer[1] = (byte) (_int >> 24);
-            buffer[2] = (byte) (_int >> 16);
-            buffer[3] = (byte) (_int >> 8);
-            buffer[4] = (byte) _int;
+            buffer[1] = (byte) _int;
+            buffer[2] = (byte) (_int >> 8);
+            buffer[3] = (byte) (_int >> 16);
+            buffer[4] = (byte) (_int >> 24);
             out.write(buffer, 0, 5);
         } else if (item instanceof Double) {
             buffer[0] = (byte) 4;
 
             long _long = Double.doubleToRawLongBits((Double) item);
-            buffer[1] = (byte) (_long >> 56);
-            buffer[2] = (byte) (_long >> 48);
-            buffer[3] = (byte) (_long >> 40);
-            buffer[4] = (byte) (_long >> 32);
-            buffer[5] = (byte) (_long >> 24);
-            buffer[6] = (byte) (_long >> 16);
-            buffer[7] = (byte) (_long >> 8);
-            buffer[8] = (byte) _long;
+            buffer[1] = (byte) _long;
+            buffer[2] = (byte) (_long >> 8);
+            buffer[3] = (byte) (_long >> 16);
+            buffer[4] = (byte) (_long >> 24);
+            buffer[5] = (byte) (_long >> 32);
+            buffer[6] = (byte) (_long >> 40);
+            buffer[7] = (byte) (_long >> 48);
+            buffer[8] = (byte) (_long >> 56);
             out.write(buffer, 0, 9);
         } else if (item instanceof byte[]) {
             byte[] binaryBytes = (byte[]) item;
@@ -148,9 +148,9 @@ public class DefaultGenerator implements Generator {
                 out.write(buffer, 0, 2);
             } else if (binaryBytesLength <= 16777215) {
                 buffer[0] = (byte) 15;
-                buffer[1] = (byte) (binaryBytesLength >> 16);
+                buffer[1] = (byte) binaryBytesLength;
                 buffer[2] = (byte) (binaryBytesLength >> 8);
-                buffer[3] = (byte) binaryBytesLength;
+                buffer[3] = (byte) (binaryBytesLength >> 16);
                 out.write(buffer, 0, 4);
             } else {
                 throw new UnsupportedDataTypeException();
@@ -192,8 +192,8 @@ public class DefaultGenerator implements Generator {
             type |= 0x20;
             buffer[0] = (byte) type;
 
-            buffer[1] = (byte) (d >> 8);
-            buffer[2] = (byte) (d);
+            buffer[1] = (byte) (d);
+            buffer[2] = (byte) (d >> 8);
 
             return 3;
         }
@@ -219,8 +219,8 @@ public class DefaultGenerator implements Generator {
                 type |= 0x10;
                 buffer[0] = (byte) type;
 
-                buffer[1] = (byte) (_int >> 8);
-                buffer[2] = (byte) (_int);
+                buffer[1] = (byte) (_int);
+                buffer[2] = (byte) (_int >> 8);
 
                 return 3;
             }
@@ -229,19 +229,19 @@ public class DefaultGenerator implements Generator {
                 type |= 0x20;
                 buffer[0] = (byte) type;
 
-                buffer[1] = (byte) (_int >> 16);
+                buffer[1] = (byte) (_int);
                 buffer[2] = (byte) (_int >> 8);
-                buffer[3] = (byte) (_int);
+                buffer[3] = (byte) (_int >> 16);
 
                 return 4;
             } else {
                 type |= 0x30;
                 buffer[0] = (byte) type;
 
-                buffer[1] = (byte) (_int >> 24);
-                buffer[2] = (byte) (_int >> 16);
-                buffer[3] = (byte) (_int >> 8);
-                buffer[4] = (byte) (_int);
+                buffer[1] = (byte) (_int);
+                buffer[2] = (byte) (_int >> 8);
+                buffer[3] = (byte) (_int >> 16);
+                buffer[4] = (byte) (_int >> 24);
 
                 return 5;
             }
@@ -268,17 +268,17 @@ public class DefaultGenerator implements Generator {
                 type |= 0x10;
                 buffer[0] = (byte) type;
 
-                buffer[1] = (byte) (d >> 8);
-                buffer[2] = (byte) (d);
+                buffer[1] = (byte) (d);
+                buffer[2] = (byte) (d >> 8);
 
                 return 3;
             } else {
                 type |= 0x20;
                 buffer[0] = (byte) type;
 
-                buffer[1] = (byte) (d >> 16);
+                buffer[1] = (byte) (d);
                 buffer[2] = (byte) (d >> 8);
-                buffer[3] = (byte) (d);
+                buffer[3] = (byte) (d >> 16);
 
                 return 4;
             }
@@ -287,36 +287,36 @@ public class DefaultGenerator implements Generator {
                 type |= 0x30;
                 buffer[0] = (byte) type;
 
-                buffer[1] = (byte) (d >> 24);
-                buffer[2] = (byte) (d >> 16);
-                buffer[3] = (byte) (d >> 8);
-                buffer[4] = (byte) (d);
+                buffer[1] = (byte) (d);
+                buffer[2] = (byte) (d >> 8);
+                buffer[3] = (byte) (d >> 16);
+                buffer[4] = (byte) (d >> 24);
 
                 return 5;
             } else if (d <= UNSIGNED_6BYTES_MAX) {
                 type |= 0x50;
                 buffer[0] = (byte) type;
 
-                buffer[1] = (byte) (d >> 40);
-                buffer[2] = (byte) (d >> 32);
-                buffer[3] = (byte) (d >> 24);
-                buffer[4] = (byte) (d >> 16);
-                buffer[5] = (byte) (d >> 8);
-                buffer[6] = (byte) (d);
+                buffer[1] = (byte) (d);
+                buffer[2] = (byte) (d >> 8);
+                buffer[3] = (byte) (d >> 16);
+                buffer[4] = (byte) (d >> 24);
+                buffer[5] = (byte) (d >> 32);
+                buffer[6] = (byte) (d >> 40);
 
                 return 7;
             } else {
                 type |= 0x70;
                 buffer[0] = (byte) type;
 
-                buffer[1] = (byte) (d >> 56);
-                buffer[2] = (byte) (d >> 48);
-                buffer[3] = (byte) (d >> 40);
-                buffer[4] = (byte) (d >> 32);
-                buffer[5] = (byte) (d >> 24);
-                buffer[6] = (byte) (d >> 16);
-                buffer[7] = (byte) (d >> 8);
-                buffer[8] = (byte) (d);
+                buffer[1] = (byte) (d);
+                buffer[2] = (byte) (d >> 8);
+                buffer[3] = (byte) (d >> 16);
+                buffer[4] = (byte) (d >> 24);
+                buffer[5] = (byte) (d >> 32);
+                buffer[6] = (byte) (d >> 40);
+                buffer[7] = (byte) (d >> 48);
+                buffer[8] = (byte) (d >> 56);
 
                 return 9;
             }

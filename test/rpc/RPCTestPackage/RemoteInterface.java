@@ -18,4 +18,8 @@ public interface RemoteInterface {
     @Blocking(true)
     @RequestTypeId(2)
     Double eval(double x);
+
+    @Blocking(true)
+    @RequestTypeId(1)
+    void eval();
 }
