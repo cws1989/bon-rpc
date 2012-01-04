@@ -116,6 +116,11 @@ public class RPCTest {
                 System.out.println("3");
                 return x;
             }
+
+            @Override
+            public void eval() {
+                System.out.println("void void");
+            }
         });
         remoteRPC.bind(RemoteInterface2.class, new RemoteInterface2() {
 
@@ -136,6 +141,7 @@ public class RPCTest {
         map.put(0, list);
         serverIntl.ljkihy(map);
         serverIntl.get(1);
+        serverIntl.eval();
         System.out.println("reply: " + serverIntl.eval(112F));
         RemoteInterface2 serverIntl2 = localRPC.getRemote(RemoteInterface2.class);
         serverIntl2.abc();

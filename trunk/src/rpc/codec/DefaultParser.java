@@ -117,24 +117,24 @@ public class DefaultParser implements Parser {
                 if (byteRead != 4) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 4, byteRead));
                 }
-                int intBuffer = ((buffer[0] & 0xff) << 24)
-                        | ((buffer[1] & 0xff) << 16)
-                        | ((buffer[2] & 0xff) << 8)
-                        | (buffer[3] & 0xff);
+                int intBuffer = (buffer[0] & 0xff)
+                        | ((buffer[1] & 0xff) << 8)
+                        | ((buffer[2] & 0xff) << 16)
+                        | ((buffer[3] & 0xff) << 24);
                 return Float.intBitsToFloat(intBuffer);
             case 4:
                 byteRead = in.read(buffer, 0, 8);
                 if (byteRead != 8) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 8, byteRead));
                 }
-                long longBuffer = (((long) (buffer[0] & 0xff)) << 56)
-                        | (((long) (buffer[1] & 0xff)) << 48)
-                        | (((long) (buffer[2] & 0xff)) << 40)
-                        | (((long) (buffer[3] & 0xff)) << 32)
-                        | ((long) (buffer[4] & 0xff) << 24)
-                        | ((buffer[5] & 0xff) << 16)
-                        | ((buffer[6] & 0xff) << 8)
-                        | (buffer[7] & 0xff);
+                long longBuffer = (buffer[0] & 0xff)
+                        | ((buffer[1] & 0xff) << 8)
+                        | ((buffer[2] & 0xff) << 16)
+                        | (((long) (buffer[3] & 0xff)) << 24)
+                        | (((long) (buffer[4] & 0xff)) << 32)
+                        | (((long) (buffer[5] & 0xff)) << 40)
+                        | (((long) (buffer[6] & 0xff)) << 48)
+                        | (((long) (buffer[7] & 0xff)) << 56);
                 return Double.longBitsToDouble(longBuffer);
             case 8:
                 return true;
@@ -161,7 +161,7 @@ public class DefaultParser implements Parser {
                 if (byteRead != 3) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 3, byteRead));
                 }
-                int _longStringLength = ((buffer[0] & 0xff) << 8) | ((buffer[1] & 0xff) << 8) | (buffer[2] & 0xff);
+                int _longStringLength = (buffer[0] & 0xff) | ((buffer[1] & 0xff) << 8) | ((buffer[2] & 0xff) << 16);
 
                 byte[] _longStringBuffer = new byte[_longStringLength];
                 byteRead = in.read(_longStringBuffer, 0, _longStringLength);
@@ -189,7 +189,7 @@ public class DefaultParser implements Parser {
                 if (byteRead != 3) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 3, byteRead));
                 }
-                int _longBinaryLength = ((buffer[0] & 0xff) << 8) | ((buffer[1] & 0xff) << 8) | (buffer[2] & 0xff);
+                int _longBinaryLength = (buffer[0] & 0xff) | ((buffer[1] & 0xff) << 8) | ((buffer[2] & 0xff) << 16);
 
                 byte[] _longBinaryBuffer = new byte[_longBinaryLength];
                 byteRead = in.read(_longBinaryBuffer, 0, _longBinaryLength);
@@ -233,8 +233,8 @@ public class DefaultParser implements Parser {
                 if (byteRead != 2) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 2, byteRead));
                 }
-                returnValue |= (buffer[0] & 0xff) << 8;
-                returnValue |= (buffer[1] & 0xff);
+                returnValue |= (buffer[0] & 0xff);
+                returnValue |= (buffer[1] & 0xff) << 8;
                 break;
             default:
                 throw new InvalidFormatException(String.format("Unexpected byte array length for 'short' value: %1$d", length));
@@ -265,27 +265,27 @@ public class DefaultParser implements Parser {
                 if (byteRead != 2) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 2, byteRead));
                 }
-                returnValue |= (buffer[0] & 0xff) << 8;
-                returnValue |= (buffer[1] & 0xff);
+                returnValue |= (buffer[0] & 0xff);
+                returnValue |= (buffer[1] & 0xff) << 8;
                 break;
             case 2:
                 byteRead = in.read(buffer, 0, 3);
                 if (byteRead != 3) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 3, byteRead));
                 }
-                returnValue |= (buffer[0] & 0xff) << 16;
+                returnValue |= (buffer[0] & 0xff);
                 returnValue |= (buffer[1] & 0xff) << 8;
-                returnValue |= (buffer[2] & 0xff);
+                returnValue |= (buffer[2] & 0xff) << 16;
                 break;
             case 3:
                 byteRead = in.read(buffer, 0, 4);
                 if (byteRead != 4) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 4, byteRead));
                 }
-                returnValue |= (buffer[0] & 0xff) << 24;
-                returnValue |= (buffer[1] & 0xff) << 16;
-                returnValue |= (buffer[2] & 0xff) << 8;
-                returnValue |= (buffer[3] & 0xff);
+                returnValue |= (buffer[0] & 0xff);
+                returnValue |= (buffer[1] & 0xff) << 8;
+                returnValue |= (buffer[2] & 0xff) << 16;
+                returnValue |= (buffer[3] & 0xff) << 24;
                 break;
             default:
                 throw new InvalidFormatException(String.format("Unexpected byte array length for 'int' value: %1$d", length));
@@ -316,53 +316,53 @@ public class DefaultParser implements Parser {
                 if (byteRead != 2) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 2, byteRead));
                 }
-                returnValue |= (buffer[0] & 0xff) << 8;
-                returnValue |= (buffer[1] & 0xff);
+                returnValue |= (buffer[0] & 0xff);
+                returnValue |= (buffer[1] & 0xff) << 8;
                 break;
             case 2:
                 byteRead = in.read(buffer, 0, 3);
                 if (byteRead != 3) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 3, byteRead));
                 }
-                returnValue |= (buffer[0] & 0xff) << 16;
+                returnValue |= (buffer[0] & 0xff);
                 returnValue |= (buffer[1] & 0xff) << 8;
-                returnValue |= (buffer[2] & 0xff);
+                returnValue |= (buffer[2] & 0xff) << 16;
                 break;
             case 3:
                 byteRead = in.read(buffer, 0, 4);
                 if (byteRead != 4) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 4, byteRead));
                 }
-                returnValue |= ((long) buffer[0] & 0xff) << 24;
-                returnValue |= (buffer[1] & 0xff) << 16;
-                returnValue |= (buffer[2] & 0xff) << 8;
-                returnValue |= (buffer[3] & 0xff);
+                returnValue |= (buffer[0] & 0xff);
+                returnValue |= (buffer[1] & 0xff) << 8;
+                returnValue |= (buffer[2] & 0xff) << 16;
+                returnValue |= ((long) (buffer[3] & 0xff)) << 24;
                 break;
             case 5:
                 byteRead = in.read(buffer, 0, 6);
                 if (byteRead != 6) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 6, byteRead));
                 }
-                returnValue |= ((long) (buffer[0] & 0xff)) << 40;
-                returnValue |= ((long) (buffer[1] & 0xff)) << 32;
-                returnValue |= ((long) buffer[2] & 0xff) << 24;
-                returnValue |= (buffer[3] & 0xff) << 16;
-                returnValue |= (buffer[4] & 0xff) << 8;
-                returnValue |= (buffer[5] & 0xff);
+                returnValue |= (buffer[0] & 0xff);
+                returnValue |= (buffer[1] & 0xff) << 8;
+                returnValue |= (buffer[2] & 0xff) << 16;
+                returnValue |= ((long) (buffer[3] & 0xff)) << 24;
+                returnValue |= ((long) (buffer[4] & 0xff)) << 32;
+                returnValue |= ((long) (buffer[5] & 0xff)) << 40;
                 break;
             case 7:
                 byteRead = in.read(buffer, 0, 8);
                 if (byteRead != 8) {
                     throw new InvalidFormatException(String.format("Expected to read %1$d bytes but %2$s byte(s) read", 8, byteRead));
                 }
-                returnValue |= ((long) (buffer[0] & 0xff)) << 56;
-                returnValue |= ((long) (buffer[1] & 0xff)) << 48;
-                returnValue |= ((long) (buffer[2] & 0xff)) << 40;
-                returnValue |= ((long) (buffer[3] & 0xff)) << 32;
-                returnValue |= ((long) buffer[4] & 0xff) << 24;
-                returnValue |= (buffer[5] & 0xff) << 16;
-                returnValue |= (buffer[6] & 0xff) << 8;
-                returnValue |= (buffer[7] & 0xff);
+                returnValue |= (buffer[0] & 0xff);
+                returnValue |= (buffer[1] & 0xff) << 8;
+                returnValue |= (buffer[2] & 0xff) << 16;
+                returnValue |= ((long) (buffer[3] & 0xff)) << 24;
+                returnValue |= ((long) (buffer[4] & 0xff)) << 32;
+                returnValue |= ((long) (buffer[5] & 0xff)) << 40;
+                returnValue |= ((long) (buffer[6] & 0xff)) << 48;
+                returnValue |= ((long) (buffer[7] & 0xff)) << 56;
                 break;
             default:
                 throw new InvalidFormatException(String.format("Unexpected byte array length for 'long' value: %1$d", length));
