@@ -25,6 +25,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javassist.CannotCompileException;
 import javassist.NotFoundException;
+import rpc.annotation.NoRespond;
+import rpc.annotation.UserObject;
 
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
@@ -74,7 +76,19 @@ public class RPCRegistry {
 
         Method[] methods = objectClass.getDeclaredMethods();
         for (Method method : methods) {
-            methodList.add(new RPCRegistryMethod(method, null));
+            boolean noRespond = false;
+            NoRespond noRespondAnnotation = method.getAnnotation(NoRespond.class);
+            if (noRespondAnnotation != null) {
+                noRespond = true;
+            }
+
+            boolean userObject = false;
+            UserObject userObjectAnnotation = method.getAnnotation(UserObject.class);
+            if (userObjectAnnotation != null && method.getParameterTypes().length > 0) {
+                userObject = true;
+            }
+
+            methodList.add(new RPCRegistryMethod(method, null, noRespond, userObject));
         }
 
         return methods.length;
@@ -85,11 +99,13 @@ public class RPCRegistry {
         protected final Method method;
         protected Object instance;
         protected boolean noRespond;
+        protected boolean userObject;
 
-        protected RPCRegistryMethod(Method method, Object instance) {
+        protected RPCRegistryMethod(Method method, Object instance, boolean noRespond, boolean userObject) {
             this.method = method;
             this.instance = instance;
-            this.noRespond = false;
+            this.noRespond = noRespond;
+            this.userObject = userObject;
         }
     }
 }

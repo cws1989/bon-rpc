@@ -24,14 +24,12 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.CRC32;
 import javassist.CannotCompileException;
 import javassist.NotFoundException;
 import rpc.RPCRegistry.RPCRegistryMethod;
-import rpc.annotation.NoRespond;
 import rpc.annotation.RequestTypeId;
 import rpc.codec.CodecFactory;
 import rpc.codec.Parser;
@@ -43,7 +41,6 @@ import rpc.util.ClassMaker;
 
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
- * @todo reuse request id
  * @todo regular send finished (respond received) request id
  * @todo keep largest continuous 'sent & responded' request id, 'responded & confirmed (by regular received finished request id)' request id
  * @todo heart beat
@@ -58,9 +55,11 @@ public class RPC implements RemoteInput {
     protected final Map<Class<?>, Integer> registeredLocalClasses;
     protected final Map<Class<?>, Integer> registeredRemoteClasses;
     //
-    protected final byte[] packetHeader;
-    protected final AtomicInteger requestIdIncrementor;
+    protected final Object requestIdIncrementorLock;
+    protected static final byte[] packetHeader;
+    protected Integer requestIdIncrementor;
     protected RemoteOutput out;
+    protected Object userObject;
     //
     protected final Map<Integer, RPCRequest> requestList;
     //
@@ -68,6 +67,12 @@ public class RPC implements RemoteInput {
     protected final Map<Class<?>, Object> remoteImplementations;
     //
     protected final PacketParser packetParser;
+
+    static {
+        packetHeader = new byte[2];
+        packetHeader[0] = (byte) 1;
+        packetHeader[1] = (byte) 7;
+    }
 
     protected RPC(List<RPCRegistryMethod> localMethodRegistry, List<RPCRegistryMethod> remoteMethodRegistry,
             Map<Class<?>, Integer> registeredLocalClasses, Map<Class<?>, Integer> registeredRemoteClasses)
@@ -77,10 +82,8 @@ public class RPC implements RemoteInput {
         this.registeredLocalClasses = registeredLocalClasses;
         this.registeredRemoteClasses = registeredRemoteClasses;
 
-        packetHeader = new byte[2];
-        packetHeader[0] = (byte) 1;
-        packetHeader[1] = (byte) 7;
-        requestIdIncrementor = new AtomicInteger(0);
+        requestIdIncrementorLock = new Object();
+        requestIdIncrementor = 0;
 
         requestList = Collections.synchronizedMap(new HashMap<Integer, RPCRequest>());
 
@@ -98,11 +101,6 @@ public class RPC implements RemoteInput {
             RequestTypeId requestTypeId = method.method.getAnnotation(RequestTypeId.class);
             if (requestTypeId == null || requestTypeId.value() < 0) {
                 continue;
-            }
-
-            NoRespond noRespond = method.method.getAnnotation(NoRespond.class);
-            if (noRespond != null) {
-                method.noRespond = true;
             }
 
             if (localMethodMap[requestTypeId.value()] != null) {
@@ -154,9 +152,27 @@ public class RPC implements RemoteInput {
         this.out = out;
     }
 
+    public void setUserObject(Object userObject) {
+        this.userObject = userObject;
+    }
+
+    public Object getUserObject() {
+        return userObject;
+    }
+
     protected Object send(int requestTypeId, Object[] args, boolean respond, boolean blocking)
             throws IOException, UnsupportedDataTypeException {
-        int requestId = respond ? requestIdIncrementor.incrementAndGet() : 0;
+        int requestId = 0;
+        if (respond) {
+            synchronized (requestIdIncrementorLock) {
+                while (requestId == 0 || requestList.get(requestId) != null) {
+                    requestId = ++requestIdIncrementor;
+                    if (requestId == 1073741823) {
+                        requestIdIncrementor = 0;
+                    }
+                }
+            }
+        }
         return genericSend(false, requestId, requestTypeId, args, respond, blocking);
     }
 
@@ -330,6 +346,13 @@ public class RPC implements RemoteInput {
         if (method.instance == null) {
             LOG.log(Level.SEVERE, "no instance for requestTypeId {0} found", new Object[]{requestTypeId});
             return null;
+        }
+
+        if (method.userObject) {
+            Object[] newArgs = new Object[args.length + 1];
+            newArgs[0] = userObject;
+            System.arraycopy(args, 0, newArgs, 1, args.length);
+            args = newArgs;
         }
 
         try {
