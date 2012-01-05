@@ -31,6 +31,7 @@ import javassist.CannotCompileException;
 import javassist.NotFoundException;
 import rpc.RPCRegistry.RPCRegistryMethod;
 import rpc.annotation.RequestTypeId;
+import rpc.annotation.Sequential;
 import rpc.codec.CodecFactory;
 import rpc.codec.Parser;
 import rpc.codec.exception.InvalidFormatException;
@@ -50,20 +51,24 @@ import rpc.util.ClassMaker;
 public class RPC implements RemoteInput {
 
     private static final Logger LOG = Logger.getLogger(RPC.class.getName());
+    //
     protected final List<RPCRegistryMethod> localMethodRegistry;
     protected final List<RPCRegistryMethod> remoteMethodRegistry;
     protected final Map<Class<?>, Integer> registeredLocalClasses;
     protected final Map<Class<?>, Integer> registeredRemoteClasses;
     //
-    protected final Object requestIdIncrementorLock;
     protected static final byte[] packetHeader;
-    protected Integer requestIdIncrementor;
     protected RemoteOutput out;
     protected Object userObject;
     //
+    protected final RPCSequentialRequestIdSet requestIdSet;
     protected final Map<Integer, RPCRequest> requestList;
+    protected final RPCSequentialRequestIdSet[] sequentialRequestIdSet;
+    protected final Map<Integer, RPCRequest>[] sequentialRequestList;
     //
     protected final RPCRegistryMethod[] localMethodMap;
+    protected final RPCSequentialRequestIdSet[] localMethodToSequentialRequestIdSet;
+    protected final Map<Integer, RPCRequest>[] localMethodToSequentialRequestList;
     protected final Map<Class<?>, Object> remoteImplementations;
     //
     protected final PacketParser packetParser;
@@ -82,46 +87,63 @@ public class RPC implements RemoteInput {
         this.registeredLocalClasses = registeredLocalClasses;
         this.registeredRemoteClasses = registeredRemoteClasses;
 
-        requestIdIncrementorLock = new Object();
-        requestIdIncrementor = 0;
+        requestIdSet = new RPCSequentialRequestIdSet();
 
         requestList = Collections.synchronizedMap(new HashMap<Integer, RPCRequest>());
 
         //<editor-fold defaultstate="collapsed" desc="local">
         int localMethodTypeIdMax = 0;
+        int sequentialRequestIdMax = 0;
         for (RPCRegistryMethod method : localMethodRegistry) {
             RequestTypeId requestTypeId = method.method.getAnnotation(RequestTypeId.class);
             if (requestTypeId != null && requestTypeId.value() > localMethodTypeIdMax) {
                 localMethodTypeIdMax = requestTypeId.value();
             }
+            Sequential sequentialAnnotation = method.method.getAnnotation(Sequential.class);
+            if (sequentialAnnotation != null && sequentialAnnotation.value() > sequentialRequestIdMax) {
+                sequentialRequestIdMax = sequentialAnnotation.value();
+            }
         }
 
         localMethodMap = new RPCRegistryMethod[localMethodTypeIdMax + 1];
+        sequentialRequestIdSet = new RPCSequentialRequestIdSet[sequentialRequestIdMax + 1];
+        sequentialRequestList = new Map[sequentialRequestIdMax + 1];
+        localMethodToSequentialRequestIdSet = new RPCSequentialRequestIdSet[localMethodTypeIdMax + 1];
+        localMethodToSequentialRequestList = new Map[localMethodTypeIdMax + 1];
+
         for (RPCRegistryMethod method : localMethodRegistry) {
             RequestTypeId requestTypeId = method.method.getAnnotation(RequestTypeId.class);
-            if (requestTypeId == null || requestTypeId.value() < 0) {
-                continue;
-            }
-
-            if (localMethodMap[requestTypeId.value()] != null) {
-                // find the class that has the this duplicated request type id
-                Class<?> targetClass = null;
-                for (Class<?> _class : registeredLocalClasses.keySet()) {
-                    Method[] _methods = _class.getMethods();
-                    for (Method _method : _methods) {
-                        if (_method.equals(method.method)) {
-                            targetClass = _class;
+            if (requestTypeId != null && requestTypeId.value() > 0) {
+                if (localMethodMap[requestTypeId.value()] != null) {
+                    // find the class that has the this duplicated request type id
+                    Class<?> targetClass = null;
+                    for (Class<?> _class : registeredLocalClasses.keySet()) {
+                        Method[] _methods = _class.getMethods();
+                        for (Method _method : _methods) {
+                            if (_method.equals(method.method)) {
+                                targetClass = _class;
+                                break;
+                            }
+                        }
+                        if (targetClass != null) {
                             break;
                         }
                     }
-                    if (targetClass != null) {
-                        break;
-                    }
+                    LOG.log(Level.SEVERE, "local request type id duplicated, id: {0}, class: {1}, method: {2}", new Object[]{requestTypeId.value(), targetClass.getName(), method.method.getName()});
+                } else {
+                    localMethodMap[requestTypeId.value()] = method;
                 }
-                LOG.log(Level.SEVERE, "local request type id duplicated, id: {0}, class: {1}, method: {2}", new Object[]{requestTypeId.value(), targetClass.getName(), method.method.getName()});
-                continue;
             }
-            localMethodMap[requestTypeId.value()] = method;
+
+            Sequential sequentialAnnotation = method.method.getAnnotation(Sequential.class);
+            if (sequentialAnnotation != null) {
+                if (sequentialRequestIdSet[sequentialAnnotation.value()] == null) {
+                    sequentialRequestIdSet[sequentialAnnotation.value()] = new RPCSequentialRequestIdSet();
+                    sequentialRequestList[sequentialAnnotation.value()] = new HashMap<Integer, RPCRequest>();
+                }
+                localMethodToSequentialRequestIdSet[requestTypeId.value()] = sequentialRequestIdSet[sequentialAnnotation.value()];
+                localMethodToSequentialRequestList[requestTypeId.value()] = sequentialRequestList[sequentialAnnotation.value()];
+            }
         }
         //</editor-fold>
 
@@ -164,11 +186,24 @@ public class RPC implements RemoteInput {
             throws IOException, UnsupportedDataTypeException {
         int requestId = 0;
         if (respond) {
-            synchronized (requestIdIncrementorLock) {
-                while (requestId == 0 || requestList.get(requestId) != null) {
-                    requestId = ++requestIdIncrementor;
-                    if (requestId == 1073741823) {
-                        requestIdIncrementor = 0;
+            if (requestTypeId < localMethodToSequentialRequestIdSet.length && localMethodToSequentialRequestIdSet[requestTypeId] != null) {
+                RPCSequentialRequestIdSet _requestIdSet = localMethodToSequentialRequestIdSet[requestTypeId];
+                Map<Integer, RPCRequest> _sequentialRequestList = localMethodToSequentialRequestList[requestTypeId];
+                synchronized (_requestIdSet) {
+                    while (requestId == 0 || _sequentialRequestList.get(requestId) != null) {
+                        requestId = ++_requestIdSet.requestId;
+                        if (requestId == 1073741823) {
+                            _requestIdSet.requestId = 0;
+                        }
+                    }
+                }
+            } else {
+                synchronized (requestIdSet) {
+                    while (requestId == 0 || requestList.get(requestId) != null) {
+                        requestId = ++requestIdSet.requestId;
+                        if (requestId == 1073741823) {
+                            requestIdSet.requestId = 0;
+                        }
                     }
                 }
             }
@@ -808,6 +843,15 @@ public class RPC implements RemoteInput {
             System.arraycopy(b, start, _crcBuffer, _crcBufferRead, byteToRead);
             _crcBufferRead += byteToRead;
             return start + byteToRead;
+        }
+    }
+
+    protected static class RPCSequentialRequestIdSet {
+
+        protected int requestId;
+
+        protected RPCSequentialRequestIdSet() {
+            requestId = 0;
         }
     }
 
