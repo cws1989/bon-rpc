@@ -7,19 +7,19 @@ import rpc.annotation.RequestTypeId;
 
 public interface RemoteInterface {
 
-    @Blocking(true)
+    @Blocking()
     @RequestTypeId(4)
     Double ljkihy(Map<Integer, List<String>> test);
 
-    @Blocking(true)
+    @Blocking()
     @RequestTypeId(5)
     Double get(int x);
 
-    @Blocking(true)
+    @Blocking()
     @RequestTypeId(2)
     Double eval(double x);
 
-    @Blocking(true)
+    @Blocking()
     @RequestTypeId(1)
     void eval();
 }

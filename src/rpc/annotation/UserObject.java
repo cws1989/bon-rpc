@@ -22,12 +22,10 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Indicate it is a blocking request, this will block the calling thread until a respond received or expired.
- * If this annotation is not specified, it will perform non-blocking request.
- * Note that if the return type is not null, this will force blocking.
+ * Indicate the first argument in the method is the user object defined in the RPC.
  * @author Chan Wai Shing <cws1989@gmail.com>
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
-public @interface Blocking {
+public @interface UserObject {
 }

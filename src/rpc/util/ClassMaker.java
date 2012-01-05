@@ -27,6 +27,7 @@ import rpc.RPC;
 import rpc.annotation.Blocking;
 import rpc.annotation.NoRespond;
 import rpc.annotation.RequestTypeId;
+import rpc.annotation.UserObject;
 
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
@@ -85,13 +86,20 @@ public class ClassMaker {
             methodBody.append(".codec.exception.UnsupportedDataTypeException {");
             methodBody.append("\n");
 
+            boolean userObject = false;
+            UserObject userObjectAnnotation = method.getAnnotation(UserObject.class);
+            if (userObjectAnnotation != null) {
+                userObject = true;
+            }
+
             // Object[] objects = new Object[]{(casting) param1, (casting) param2, ...};
             // or Object[] objects = null;
             if (parameterCount != 1) {
                 methodBody.append("\t");
                 methodBody.append("Object[] objects = new Object[]{");
-                for (int i = 1; i < parameterCount; i++) {
-                    if (i != 1) {
+                int startIndex = userObject ? 2 : 1;
+                for (int i = startIndex; i < parameterCount; i++) {
+                    if (i != startIndex) {
                         methodBody.append(", ");
                     }
                     methodBody.append("($w) v");
@@ -130,7 +138,7 @@ public class ClassMaker {
             boolean blocking = false;
             Blocking blockingAnnotation = method.getAnnotation(Blocking.class);
             if (blockingAnnotation != null) {
-                blocking = blockingAnnotation.value();
+                blocking = true;
             }
 
             if (!method.getReturnType().equals(void.class)) {
