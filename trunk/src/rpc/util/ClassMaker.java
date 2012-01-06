@@ -62,7 +62,7 @@ public class ClassMaker {
 
             // public returnType methodName(
             methodBody.append("public ");
-            methodBody.append(method.getReturnType().getName());
+            methodBody.append(getClassName(method.getReturnType()));
             methodBody.append(" ");
             methodBody.append(method.getName());
             methodBody.append("(");
@@ -74,7 +74,7 @@ public class ClassMaker {
                 if (parameterCount != 1) {
                     methodBody.append(", ");
                 }
-                methodBody.append(parameterClass.getName());
+                methodBody.append(getClassName(parameterClass));
                 methodBody.append(" v");
                 methodBody.append(parameterCount);
                 parameterCount++;
@@ -170,6 +170,60 @@ public class ClassMaker {
         }
 
         return evalClass.toClass();
+    }
+
+    protected static String getClassName(Class<?> clazz) {
+        String className = clazz.getName();
+        if (className.indexOf(0) == '[') {
+            int arrayCount = 0;
+            String dataTypeName = null;
+
+            char[] classNameChars = className.toCharArray();
+            for (int i = 0, iEnd = classNameChars.length; i < iEnd; i++) {
+                if (classNameChars[i] != '[') {
+                    switch (classNameChars[i]) {
+                        case 'B':
+                            dataTypeName = "byte";
+                            break;
+                        case 'Z':
+                            dataTypeName = "boolean";
+                            break;
+                        case 'C':
+                            dataTypeName = "char";
+                            break;
+                        case 'D':
+                            dataTypeName = "double";
+                            break;
+                        case 'F':
+                            dataTypeName = "float";
+                            break;
+                        case 'I':
+                            dataTypeName = "int";
+                            break;
+                        case 'J':
+                            dataTypeName = "long";
+                            break;
+                        case 'S':
+                            dataTypeName = "short";
+                            break;
+                        case 'L':
+                            dataTypeName = new String(classNameChars, i + 1, iEnd);
+                            break;
+                    }
+                    break;
+                }
+                arrayCount++;
+            }
+
+            StringBuilder sb = new StringBuilder(dataTypeName.length() + (arrayCount * 2));
+            sb.append(dataTypeName);
+            while (arrayCount-- > 0) {
+                sb.append("[]");
+            }
+            return sb.toString();
+        } else {
+            return clazz.getName();
+        }
     }
 
     public static <T> T makeInstance(Class<T> objClass, Class<?> rpcClass, RPC rpc) throws NotFoundException, CannotCompileException, InstantiationException, IllegalAccessException {

@@ -61,14 +61,20 @@ public class RPC implements RemoteInput {
     protected RemoteOutput out;
     protected Object userObject;
     //
-    protected final RPCSequentialRequestIdSet requestIdSet;
+    protected final RPCIdSet requestIdSet;
     protected final Map<Integer, RPCRequest> requestList;
-    protected final RPCSequentialRequestIdSet[] sequentialRequestIdSet;
+    //
+    protected final RPCIdSet[] sequentialRequestIdSet;
+    protected final RPCIdSet[] sequentialRespondIdSet;
     protected final Map<Integer, RPCRequest>[] sequentialRequestList;
+    protected final Map<Integer, RPCRequest>[] sequentialRespondList;
+    //
+    protected final RPCIdSet[] localMethodToSequentialRequestIdSet;
+    protected final RPCIdSet[] localMethodToSequentialRespondIdSet;
+    protected final Map<Integer, RPCRequest>[] localMethodToSequentialRespondList;
+    protected final Map<Integer, RPCRequest>[] localMethodToSequentialRequestList;
     //
     protected final RPCRegistryMethod[] localMethodMap;
-    protected final RPCSequentialRequestIdSet[] localMethodToSequentialRequestIdSet;
-    protected final Map<Integer, RPCRequest>[] localMethodToSequentialRequestList;
     protected final Map<Class<?>, Object> remoteImplementations;
     //
     protected final PacketParser packetParser;
@@ -87,7 +93,7 @@ public class RPC implements RemoteInput {
         this.registeredLocalClasses = registeredLocalClasses;
         this.registeredRemoteClasses = registeredRemoteClasses;
 
-        requestIdSet = new RPCSequentialRequestIdSet();
+        requestIdSet = new RPCIdSet();
 
         requestList = Collections.synchronizedMap(new HashMap<Integer, RPCRequest>());
 
@@ -106,10 +112,15 @@ public class RPC implements RemoteInput {
         }
 
         localMethodMap = new RPCRegistryMethod[localMethodTypeIdMax + 1];
-        sequentialRequestIdSet = new RPCSequentialRequestIdSet[sequentialRequestIdMax + 1];
+
+        sequentialRequestIdSet = new RPCIdSet[sequentialRequestIdMax + 1];
+        sequentialRespondIdSet = new RPCIdSet[sequentialRequestIdMax + 1];
         sequentialRequestList = new Map[sequentialRequestIdMax + 1];
-        localMethodToSequentialRequestIdSet = new RPCSequentialRequestIdSet[localMethodTypeIdMax + 1];
+        sequentialRespondList = new Map[sequentialRequestIdMax + 1];
+        localMethodToSequentialRequestIdSet = new RPCIdSet[localMethodTypeIdMax + 1];
+        localMethodToSequentialRespondIdSet = new RPCIdSet[localMethodTypeIdMax + 1];
         localMethodToSequentialRequestList = new Map[localMethodTypeIdMax + 1];
+        localMethodToSequentialRespondList = new Map[localMethodTypeIdMax + 1];
 
         for (RPCRegistryMethod method : localMethodRegistry) {
             RequestTypeId requestTypeId = method.method.getAnnotation(RequestTypeId.class);
@@ -138,11 +149,15 @@ public class RPC implements RemoteInput {
             Sequential sequentialAnnotation = method.method.getAnnotation(Sequential.class);
             if (sequentialAnnotation != null) {
                 if (sequentialRequestIdSet[sequentialAnnotation.value()] == null) {
-                    sequentialRequestIdSet[sequentialAnnotation.value()] = new RPCSequentialRequestIdSet();
+                    sequentialRequestIdSet[sequentialAnnotation.value()] = new RPCIdSet();
+                    sequentialRespondIdSet[sequentialAnnotation.value()] = new RPCIdSet();
                     sequentialRequestList[sequentialAnnotation.value()] = new HashMap<Integer, RPCRequest>();
+                    sequentialRespondList[sequentialAnnotation.value()] = new HashMap<Integer, RPCRequest>();
                 }
                 localMethodToSequentialRequestIdSet[requestTypeId.value()] = sequentialRequestIdSet[sequentialAnnotation.value()];
+                localMethodToSequentialRespondIdSet[requestTypeId.value()] = sequentialRespondIdSet[sequentialAnnotation.value()];
                 localMethodToSequentialRequestList[requestTypeId.value()] = sequentialRequestList[sequentialAnnotation.value()];
+                localMethodToSequentialRespondList[requestTypeId.value()] = sequentialRespondList[sequentialAnnotation.value()];
             }
         }
         //</editor-fold>
@@ -187,22 +202,22 @@ public class RPC implements RemoteInput {
         int requestId = 0;
         if (respond) {
             if (requestTypeId < localMethodToSequentialRequestIdSet.length && localMethodToSequentialRequestIdSet[requestTypeId] != null) {
-                RPCSequentialRequestIdSet _requestIdSet = localMethodToSequentialRequestIdSet[requestTypeId];
+                RPCIdSet _requestIdSet = localMethodToSequentialRequestIdSet[requestTypeId];
                 Map<Integer, RPCRequest> _sequentialRequestList = localMethodToSequentialRequestList[requestTypeId];
                 synchronized (_requestIdSet) {
                     while (requestId == 0 || _sequentialRequestList.get(requestId) != null) {
-                        requestId = ++_requestIdSet.requestId;
+                        requestId = _requestIdSet.id++;
                         if (requestId == 1073741823) {
-                            _requestIdSet.requestId = 0;
+                            _requestIdSet.id = 1;
                         }
                     }
                 }
             } else {
                 synchronized (requestIdSet) {
                     while (requestId == 0 || requestList.get(requestId) != null) {
-                        requestId = ++requestIdSet.requestId;
+                        requestId = requestIdSet.id++;
                         if (requestId == 1073741823) {
-                            requestIdSet.requestId = 0;
+                            requestIdSet.id = 1;
                         }
                     }
                 }
@@ -247,7 +262,7 @@ public class RPC implements RemoteInput {
                         throw new IOException("Thread interruptted when waiting for respond");
                     }
                 }
-                return request.respondContent;
+                return request.content;
             }
         } else {
             return null;
@@ -707,7 +722,7 @@ public class RPC implements RemoteInput {
                                 LOG.log(Level.SEVERE, "size of the respond list is incorrect");
                                 return;
                             }
-                            request.respondContent = contentList.get(0);
+                            request.content = contentList.get(0);
                             synchronized (request) {
                                 request.notifyAll();
                             }
@@ -719,7 +734,28 @@ public class RPC implements RemoteInput {
                             return;
                         }
 
-                        Object respond = invoke(_requestTypeId, ((List<Object>) content).toArray());
+                        Object respond = null;
+
+                        RPCIdSet respondId = localMethodToSequentialRespondIdSet[_requestTypeId];
+                        Map<Integer, RPCRequest> respondList = localMethodToSequentialRespondList[_requestTypeId];
+                        if (respondList != null) {
+                            synchronized (respondId) {
+                                if (respondId.id == _requestId) {
+                                    respondId.id++;
+                                    respond = invoke(_requestTypeId, ((List<Object>) content).toArray());
+
+                                    RPCRequest rpcRequest;
+                                    while ((rpcRequest = respondList.remove(respondId.id + 1)) != null) {
+                                        respondId.id++;
+                                        respond = invoke(_requestTypeId, ((List<Object>) rpcRequest.content).toArray());
+                                    }
+                                } else if (_requestId > respondId.id) {
+                                    respondList.put(_requestId, new RPCRequest(_requestId, System.currentTimeMillis(), content));
+                                }
+                            }
+                        } else {
+                            respond = invoke(_requestTypeId, ((List<Object>) content).toArray());
+                        }
 
                         if (!method.noRespond) {
                             try {
@@ -846,25 +882,31 @@ public class RPC implements RemoteInput {
         }
     }
 
-    protected static class RPCSequentialRequestIdSet {
+    protected static class RPCIdSet {
 
-        protected int requestId;
+        protected int id;
 
-        protected RPCSequentialRequestIdSet() {
-            requestId = 0;
+        protected RPCIdSet() {
+            id = 1;
         }
     }
 
     protected static class RPCRequest {
 
         protected final int requestId;
-        protected long sendTime;
-        protected Object respondContent;
+        protected long time;
+        protected Object content;
 
-        protected RPCRequest(int requestId, long sendTime) {
+        protected RPCRequest(int requestId, long time) {
             this.requestId = requestId;
-            this.sendTime = sendTime;
-            respondContent = null;
+            this.time = time;
+            content = null;
+        }
+
+        protected RPCRequest(int requestId, long time, Object content) {
+            this.requestId = requestId;
+            this.time = time;
+            this.content = content;
         }
     }
 }
