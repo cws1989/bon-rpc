@@ -543,6 +543,7 @@ public class RPC implements RemoteInput {
 
                     synchronized (_idSet) {
                         if (_requestId == _idSet.respondedId) {
+                            _requestList.remove(_requestId);
                             _idSet.respondedId++;
                             if (_idSet.respondedId > 1073741823) {
                                 _idSet.respondedId = 1;
