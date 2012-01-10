@@ -14,22 +14,12 @@
 //
 // You should have received a copy of the GNU Lesser General Public License
 // along with BON RPC.  If not, see <http://www.gnu.org/licenses/>.
-package rpc.annotation;
-
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
+package rpc;
 
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
  */
-@Retention(RetentionPolicy.RUNTIME)
-@Target(ElementType.METHOD)
-public @interface Sequential {
+public interface RPCListener {
 
-    /**
-     * The sequence id, should start from 1.
-     */
-    int value();
+    void rpcClosed();
 }
