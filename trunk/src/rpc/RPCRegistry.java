@@ -30,6 +30,7 @@ import rpc.RPC.RPCIdSet;
 import rpc.RPC.RPCRequest;
 import rpc.annotation.NoRespond;
 import rpc.annotation.UserObject;
+import rpc.exception.ClassRegisteredException;
 
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
@@ -45,7 +46,6 @@ public class RPCRegistry {
     protected Runnable retryTask;
     protected Thread retryThread;
     protected final List<RPC> rpcList;
-    protected final Map<RPC, RPCMonitorRecord> retryRecords;
 
     public RPCRegistry() {
         localMethodRegistry = new ArrayList<RPCRegistryMethod>();
@@ -54,12 +54,11 @@ public class RPCRegistry {
         registeredRemoteClasses = new HashMap<Class<?>, Integer>();
 
         rpcList = new ArrayList<RPC>();
-        retryRecords = new HashMap<RPC, RPCMonitorRecord>();
         retryTask = new Runnable() {
 
             @Override
             public void run() {
-                long currentTime, sleepTime, lastReceiveTimeDiff;
+                long sleepTime;
                 while (true) {
                     if (Thread.interrupted()) {
                         synchronized (RPCRegistry.this) {
@@ -70,7 +69,7 @@ public class RPCRegistry {
                     }
 
                     synchronized (RPCRegistry.this) {
-                        currentTime = System.currentTimeMillis();
+                        long currentTime = System.currentTimeMillis();
 
                         RPC[] rpcArray = null;
                         synchronized (rpcList) {
@@ -82,47 +81,43 @@ public class RPCRegistry {
                                 continue;
                             }
 
-                            RPCMonitorRecord monitorRecord = retryRecords.get(rpc);
-
+                            //<editor-fold defaultstate="collapsed" desc="send largest sequential respondedId">
                             try {
-                                if (rpc.requestIdSet.respondedId < monitorRecord.lastRespondId) {
-                                    rpc.send(0, new Object[]{0, 1073741823}, true, false);
-                                    monitorRecord.lastRespondId = 1073741823;
-                                    monitorRecord.lastRespondIdSentTime = currentTime;
-                                }
-                                if (rpc.requestIdSet.respondedId - monitorRecord.lastRespondId > 100 || currentTime - monitorRecord.lastRespondIdSentTime > 30000) {
-                                    rpc.send(0, new Object[]{0, rpc.requestIdSet.respondedId}, true, false);
-                                    monitorRecord.lastRespondId = rpc.requestIdSet.respondedId;
-                                    monitorRecord.lastRespondIdSentTime = currentTime;
-                                }
+                                List<RPCIdSet> idSetList = new ArrayList<RPCIdSet>();
+                                idSetList.add(rpc.requestIdSet);
                                 for (int i = 0, iEnd = rpc.sequentialRequestIdSet.length; i < iEnd; i++) {
-                                    RPCIdSet idSet = rpc.sequentialRequestIdSet[i];
-                                    if (idSet == null) {
-                                        continue;
+                                    RPCIdSet _idSet = rpc.sequentialRequestIdSet[i];
+                                    if (_idSet != null) {
+                                        idSetList.add(_idSet);
                                     }
-                                    if (idSet.respondedId < monitorRecord.lastRespondId) {
-                                        rpc.send(0, new Object[]{i, 1073741823}, true, false);
-                                        monitorRecord.lastRespondId = 1073741823;
-                                        monitorRecord.lastRespondIdSentTime = currentTime;
+                                }
+                                for (RPCIdSet _idSet : idSetList) {
+                                    if (_idSet.respondedId < _idSet.lastRespondId) {
+                                        Object[] sendObject = _idSet.sequentialId == -1 ? new Object[]{1073741823} : new Object[]{_idSet.sequentialId, 1073741823};
+                                        rpc.send(0, sendObject, true, false);
+                                        _idSet.lastRespondId = 1;
+                                        _idSet.lastRespondIdSendTime = currentTime;
                                     }
-                                    if (idSet.respondedId - monitorRecord.lastRespondId > 100 || currentTime - monitorRecord.lastRespondIdSentTime > 30000) {
-                                        rpc.send(0, new Object[]{i, idSet.respondedId}, true, false);
-                                        monitorRecord.lastRespondId = idSet.respondedId;
-                                        monitorRecord.lastRespondIdSentTime = currentTime;
+                                    if (_idSet.respondedId - _idSet.lastRespondId > 100 || currentTime - _idSet.lastRespondIdSendTime > 30000) {
+                                        Object[] sendObject = _idSet.sequentialId == -1 ? new Object[]{_idSet.respondedId} : new Object[]{_idSet.sequentialId, _idSet.respondedId};
+                                        rpc.send(0, sendObject, true, false);
+                                        _idSet.lastRespondId = _idSet.respondedId;
+                                        _idSet.lastRespondIdSendTime = currentTime;
                                     }
                                 }
                             } catch (Exception ex) {
                                 LOG.log(Level.INFO, null, ex);
                             }
+                            //</editor-fold>
 
+                            //<editor-fold defaultstate="collapsed" desc="retry send request">
                             List<Map<Integer, RPCRequest>> requestListList = new ArrayList<Map<Integer, RPCRequest>>();
                             requestListList.add(rpc.requestList);
                             for (int i = 0, iEnd = rpc.sequentialRequestIdSet.length; i < iEnd; i++) {
                                 Map<Integer, RPCRequest> _requestList = rpc.sequentialRequestList[i];
-                                if (_requestList == null) {
-                                    continue;
+                                if (_requestList != null) {
+                                    requestListList.add(_requestList);
                                 }
-                                requestListList.add(_requestList);
                             }
                             for (Map<Integer, RPCRequest> _requestList : requestListList) {
                                 synchronized (_requestList) {
@@ -138,23 +133,26 @@ public class RPCRegistry {
                                     }
                                 }
                             }
+                            //</editor-fold>
 
-                            lastReceiveTimeDiff = currentTime - rpc.lastPacketReceiveTime;
+                            //<editor-fold defaultstate="collapsed" desc="heart beat">
+                            long lastReceiveTimeDiff = currentTime - rpc.lastPacketReceiveTime;
                             if (lastReceiveTimeDiff > 35000) {
                                 rpc.close();
-                            } else if (lastReceiveTimeDiff > 10000 && currentTime - monitorRecord.lastHeartBeatSendTime > 10000) {
+                            } else if (lastReceiveTimeDiff > 10000 && currentTime - rpc.lastHeartBeatSendTime > 10000) {
                                 try {
                                     rpc.send(0, new Object[]{null}, true, false);
-                                    monitorRecord.lastHeartBeatSendTime = currentTime;
+                                    rpc.lastHeartBeatSendTime = currentTime;
                                 } catch (Exception ex) {
                                     LOG.log(Level.INFO, null, ex);
                                 }
                             }
-
+                            //</editor-fold>
                         }
 
                         sleepTime = Math.max(0, 2500 - (System.currentTimeMillis() - currentTime));
                     }
+
                     try {
                         Thread.sleep(sleepTime);
                     } catch (InterruptedException ex) {
@@ -199,34 +197,27 @@ public class RPCRegistry {
     }
 
     protected void remove(RPC rpc) {
-        synchronized (this) {
-            rpcList.remove(rpc);
-            retryRecords.remove(rpc);
-        }
+        rpcList.remove(rpc);
     }
 
     public RPC getRPC() throws NotFoundException, CannotCompileException, InstantiationException, IllegalAccessException {
         RPC rpc = new RPC(this, new ArrayList<RPCRegistryMethod>(localMethodRegistry), new ArrayList<RPCRegistryMethod>(remoteMethodRegistry),
                 new HashMap<Class<?>, Integer>(registeredLocalClasses), new HashMap<Class<?>, Integer>(registeredRemoteClasses));
-        synchronized (this) {
-            rpcList.add(rpc);
-            retryRecords.put(rpc, new RPCMonitorRecord());
-        }
+        rpcList.add(rpc);
         return rpc;
     }
 
-    public void registerLocal(Class<?> objectClass) {
+    public void registerLocal(Class<?> objectClass) throws ClassRegisteredException {
         registerClass(objectClass, registeredLocalClasses, localMethodRegistry);
     }
 
-    public void registerRemote(Class<?> objectClass) {
+    public void registerRemote(Class<?> objectClass) throws ClassRegisteredException {
         registerClass(objectClass, registeredRemoteClasses, remoteMethodRegistry);
     }
 
-    protected int registerClass(Class<?> objectClass, Map<Class<?>, Integer> classMap, List<RPCRegistryMethod> methodList) {
+    protected int registerClass(Class<?> objectClass, Map<Class<?>, Integer> classMap, List<RPCRegistryMethod> methodList) throws ClassRegisteredException {
         if (classMap.get(objectClass) != null) {
-            LOG.log(Level.SEVERE, "class {0} already registered", objectClass.getName());
-            return 0;
+            throw new ClassRegisteredException(String.format("class %1$s already registered", objectClass.getName()));
         }
 
         classMap.put(objectClass, methodList.size());
@@ -263,19 +254,6 @@ public class RPCRegistry {
             this.instance = instance;
             this.noRespond = noRespond;
             this.userObject = userObject;
-        }
-    }
-
-    protected static class RPCMonitorRecord {
-
-        protected long lastHeartBeatSendTime;
-        protected int lastRespondId;
-        protected long lastRespondIdSentTime;
-
-        protected RPCMonitorRecord() {
-            lastHeartBeatSendTime = System.currentTimeMillis();
-            lastRespondId = 1;
-            lastRespondIdSentTime = lastHeartBeatSendTime;
         }
     }
 }

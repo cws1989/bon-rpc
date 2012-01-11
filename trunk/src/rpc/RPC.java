@@ -55,10 +55,6 @@ public class RPC implements RemoteInput, Closeable {
     protected final Map<Class<?>, Integer> registeredLocalClasses;
     protected final Map<Class<?>, Integer> registeredRemoteClasses;
     //
-    protected static final byte[] packetHeader;
-    protected RemoteOutput out;
-    protected Object userObject;
-    //
     protected final RPCIdSet requestIdSet;
     protected final RPCIdSet respondIdSet;
     protected final Map<Integer, RPCRequest> requestList;
@@ -77,9 +73,15 @@ public class RPC implements RemoteInput, Closeable {
     protected final RPCRegistryMethod[] localMethodMap;
     protected final Map<Class<?>, Object> remoteImplementations;
     //
+    protected long lastPacketReceiveTime;
+    protected long lastHeartBeatSendTime;
+    //
     protected PacketReceiver packetReceiver;
     protected final List<RPCListener> listeners;
-    protected long lastPacketReceiveTime;
+    protected RemoteOutput out;
+    protected Object userObject;
+    //
+    protected static final byte[] packetHeader;
 
     static {
         packetHeader = new byte[2];
@@ -87,7 +89,8 @@ public class RPC implements RemoteInput, Closeable {
         packetHeader[1] = (byte) 7;
     }
 
-    protected RPC(RPCRegistry rpcRegistry, List<RPCRegistryMethod> localMethodRegistry, List<RPCRegistryMethod> remoteMethodRegistry,
+    protected RPC(RPCRegistry rpcRegistry,
+            List<RPCRegistryMethod> localMethodRegistry, List<RPCRegistryMethod> remoteMethodRegistry,
             Map<Class<?>, Integer> registeredLocalClasses, Map<Class<?>, Integer> registeredRemoteClasses)
             throws NotFoundException, CannotCompileException, InstantiationException, IllegalAccessException {
         this.rpcRegistry = rpcRegistry;
@@ -97,14 +100,14 @@ public class RPC implements RemoteInput, Closeable {
         this.registeredLocalClasses = registeredLocalClasses;
         this.registeredRemoteClasses = registeredRemoteClasses;
 
-        requestIdSet = new RPCIdSet(0);
-        respondIdSet = new RPCIdSet(0);
+        requestIdSet = new RPCIdSet(-1);
+        respondIdSet = new RPCIdSet(-1);
         requestList = Collections.synchronizedMap(new HashMap<Integer, RPCRequest>());
         respondList = Collections.synchronizedMap(new HashMap<Integer, RPCRequest>());
 
         //<editor-fold defaultstate="collapsed" desc="local">
         int localMethodTypeIdMax = 0;
-        int sequentialRequestIdMax = 0;
+        int localSequentialIdMax = 0;
         for (RPCRegistryMethod method : localMethodRegistry) {
             RequestTypeId requestTypeId = method.method.getAnnotation(RequestTypeId.class);
             if (requestTypeId != null && requestTypeId.value() > localMethodTypeIdMax) {
@@ -112,15 +115,15 @@ public class RPC implements RemoteInput, Closeable {
             }
 
             Sequential sequentialAnnotation = method.method.getAnnotation(Sequential.class);
-            if (sequentialAnnotation != null && sequentialAnnotation.value() > sequentialRequestIdMax) {
-                sequentialRequestIdMax = sequentialAnnotation.value();
+            if (sequentialAnnotation != null && sequentialAnnotation.value() > localSequentialIdMax) {
+                localSequentialIdMax = sequentialAnnotation.value();
             }
         }
 
         localMethodMap = new RPCRegistryMethod[localMethodTypeIdMax + 1];
 
-        _sequentialRespondIdSet = new RPCIdSet[sequentialRequestIdMax + 1];
-        _sequentialRespondList = new Map[sequentialRequestIdMax + 1];
+        _sequentialRespondIdSet = new RPCIdSet[localSequentialIdMax + 1];
+        _sequentialRespondList = new Map[localSequentialIdMax + 1];
 
         sequentialRespondIdSet = new RPCIdSet[localMethodTypeIdMax + 1];
         sequentialRespondList = new Map[localMethodTypeIdMax + 1];
@@ -165,7 +168,7 @@ public class RPC implements RemoteInput, Closeable {
 
         //<editor-fold defaultstate="collapsed" desc="remote">
         int remoteMethodTypeIdMax = 0;
-        int sequentialRespondIdMax = 0;
+        int remoteSequentialIdMax = 0;
         for (RPCRegistryMethod method : remoteMethodRegistry) {
             RequestTypeId requestTypeId = method.method.getAnnotation(RequestTypeId.class);
             if (requestTypeId != null && requestTypeId.value() > remoteMethodTypeIdMax) {
@@ -173,13 +176,13 @@ public class RPC implements RemoteInput, Closeable {
             }
 
             Sequential sequentialAnnotation = method.method.getAnnotation(Sequential.class);
-            if (sequentialAnnotation != null && sequentialAnnotation.value() > sequentialRespondIdMax) {
-                sequentialRespondIdMax = sequentialAnnotation.value();
+            if (sequentialAnnotation != null && sequentialAnnotation.value() > remoteSequentialIdMax) {
+                remoteSequentialIdMax = sequentialAnnotation.value();
             }
         }
 
-        _sequentialRequestIdSet = new RPCIdSet[sequentialRespondIdMax + 1];
-        _sequentialRequestList = new Map[sequentialRespondIdMax + 1];
+        _sequentialRequestIdSet = new RPCIdSet[remoteSequentialIdMax + 1];
+        _sequentialRequestList = new Map[remoteSequentialIdMax + 1];
 
         sequentialRequestIdSet = new RPCIdSet[remoteMethodTypeIdMax + 1];
         sequentialRequestList = new Map[remoteMethodTypeIdMax + 1];
@@ -220,10 +223,13 @@ public class RPC implements RemoteInput, Closeable {
         }
         //</editor-fold>
 
+        lastPacketReceiveTime = System.currentTimeMillis();
+        lastHeartBeatSendTime = lastPacketReceiveTime;
+
         packetReceiver = new PacketReceiver();
         listeners = Collections.synchronizedList(new ArrayList<RPCListener>());
-        lastPacketReceiveTime = System.currentTimeMillis();
 
+        //<editor-fold defaultstate="collapsed" desc="add mapping for sending maximum sequential respondId and heart beat">
         _sequentialRequestIdSet[0] = new RPCIdSet(0);
         _sequentialRequestList[0] = Collections.synchronizedMap(new HashMap<Integer, RPCRequest>());
         sequentialRequestIdSet[0] = _sequentialRequestIdSet[0];
@@ -235,6 +241,7 @@ public class RPC implements RemoteInput, Closeable {
         sequentialRespondList[0] = _sequentialRespondList[0];
 
         localMethodMap[0] = new RPCRegistryMethod(null, null, false, false);
+        //</editor-fold>
     }
 
     public void addListener(RPCListener listener) {
@@ -267,6 +274,10 @@ public class RPC implements RemoteInput, Closeable {
 
     public void setRemoteOutput(RemoteOutput out) {
         this.out = out;
+    }
+
+    public RemoteOutput getRemoteOutput() {
+        return out;
     }
 
     public void setUserObject(Object userObject) {
@@ -321,14 +332,12 @@ public class RPC implements RemoteInput, Closeable {
             throw new IOException("RemoteOutput is not set");
         }
 
-        RPCRequest request = new RPCRequest(requestId, System.currentTimeMillis(), packetData);
-        if (respond) {
-            requestList.put(requestId, request);
-        }
-
         out.write(packetData);
 
         if (respond) {
+            RPCRequest request = new RPCRequest(requestId, System.currentTimeMillis(), packetData);
+            requestList.put(requestId, request);
+
             if (!blocking) {
                 return null;
             } else {
@@ -470,10 +479,10 @@ public class RPC implements RemoteInput, Closeable {
 
                 RPCIdSet _idSet = _sequentialRespondIdSet[_targetSequenceId];
                 Map<Integer, RPCRequest> _respondList = _sequentialRespondList[_targetSequenceId];
-                if (_respondList == null) {
-                    _idSet = respondIdSet;
-                    _respondList = respondList;
+                if (_idSet == null) {
+                    return null;
                 }
+
                 if (_targetRespondedId < _idSet.respondedId) {
                     return null;
                 }
@@ -481,6 +490,17 @@ public class RPC implements RemoteInput, Closeable {
                     _respondList.remove(i);
                 }
                 _idSet.respondedId = _targetRespondedId;
+            } else if (args.length == 1 && args[0] instanceof Integer) {
+                // respondId notification, no sequential id
+                int _targetRespondedId = (Integer) args[0];
+
+                if (_targetRespondedId < respondIdSet.respondedId) {
+                    return null;
+                }
+                for (int i = respondIdSet.respondedId; i <= _targetRespondedId; i++) {
+                    respondList.remove(i);
+                }
+                respondIdSet.respondedId = _targetRespondedId;
             } else {
                 // heart beat: args.length == 1 && args[0] == null
             }
@@ -502,7 +522,7 @@ public class RPC implements RemoteInput, Closeable {
         }
 
         if (method.instance == null) {
-            LOG.log(Level.SEVERE, "no instance for requestTypeId {0} found", new Object[]{requestTypeId});
+            LOG.log(Level.SEVERE, "instance with requestTypeId {0} not found", new Object[]{requestTypeId});
             return null;
         }
 
@@ -597,6 +617,7 @@ public class RPC implements RemoteInput, Closeable {
                 LOG.log(Level.SEVERE, "respond is not a list");
                 return;
             }
+            List<Object> contentList = ((List<Object>) content);
 
             if (_isRespond) {
                 if (_requestTypeId >= sequentialRequestIdSet.length) {
@@ -612,7 +633,6 @@ public class RPC implements RemoteInput, Closeable {
 
                 RPCRequest request = _requestList.get(_requestId);
                 if (request != null) {
-                    List<Object> contentList = ((List<Object>) content);
                     if (contentList.size() != 1) {
                         LOG.log(Level.SEVERE, "size of the respond list is incorrect");
                         return;
@@ -666,7 +686,7 @@ public class RPC implements RemoteInput, Closeable {
                             if (_idSet.id > 1073741823) {
                                 _idSet.id = 1;
                             }
-                            respond = invoke(_requestTypeId, ((List<Object>) content).toArray());
+                            respond = invoke(_requestTypeId, contentList.toArray());
 
                             RPCRequest rpcRequest;
                             while ((rpcRequest = _respondList.remove(_idSet.id + 1)) != null) {
@@ -693,7 +713,7 @@ public class RPC implements RemoteInput, Closeable {
                     synchronized (_idSet) {
                         RPCRequest rpcRequest = _respondList.get(_requestId);
                         if (rpcRequest == null) {
-                            respond = invoke(_requestTypeId, ((List<Object>) content).toArray());
+                            respond = invoke(_requestTypeId, contentList.toArray());
                             _respondList.put(_requestId, new RPCRequest(_requestTypeId, _requestId, System.currentTimeMillis(), null, respond));
                         } else {
                             respond = rpcRequest.respond;
@@ -1065,11 +1085,17 @@ public class RPC implements RemoteInput, Closeable {
         protected final int sequentialId;
         protected int id;
         protected int respondedId;
+        //
+        protected int lastRespondId;
+        protected long lastRespondIdSendTime;
 
         protected RPCIdSet(int sequentialId) {
             this.sequentialId = sequentialId;
             id = 1;
             respondedId = 0;
+
+            lastRespondId = 1;
+            lastRespondIdSendTime = System.currentTimeMillis();
         }
     }
 
