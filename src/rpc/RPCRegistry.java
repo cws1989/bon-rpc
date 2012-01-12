@@ -29,10 +29,13 @@ import javassist.CannotCompileException;
 import javassist.NotFoundException;
 import rpc.RPC.RPCIdSet;
 import rpc.RPC.RPCRequest;
+import rpc.annotation.Blocking;
 import rpc.annotation.Broadcast;
 import rpc.annotation.NoRespond;
+import rpc.annotation.RequestTypeId;
 import rpc.annotation.UserObject;
 import rpc.exception.ClassRegisteredException;
+import rpc.exception.ConditionConflictException;
 
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
@@ -223,23 +226,42 @@ public class RPCRegistry {
         return rpc;
     }
 
-    public void registerLocal(Class<?> objectClass) throws ClassRegisteredException {
+    public void registerLocal(Class<?> objectClass) throws ClassRegisteredException, ConditionConflictException {
         registerClass(objectClass, registeredLocalClasses, localMethodRegistry);
     }
 
-    public void registerRemote(Class<?> objectClass) throws ClassRegisteredException {
+    public void registerRemote(Class<?> objectClass) throws ClassRegisteredException, ConditionConflictException {
         registerClass(objectClass, registeredRemoteClasses, remoteMethodRegistry);
     }
 
-    protected int registerClass(Class<?> objectClass, Map<Class<?>, Integer> classMap, List<RPCRegistryMethod> methodList) throws ClassRegisteredException {
+    protected int registerClass(Class<?> objectClass, Map<Class<?>, Integer> classMap, List<RPCRegistryMethod> methodList) throws ClassRegisteredException, ConditionConflictException {
         if (classMap.get(objectClass) != null) {
             throw new ClassRegisteredException(String.format("class %1$s already registered", objectClass.getName()));
         }
 
         classMap.put(objectClass, methodList.size());
 
+        int methodCount = 0;
+
         Method[] methods = objectClass.getDeclaredMethods();
         for (Method method : methods) {
+            RequestTypeId requestTypeIdAnnotation = method.getAnnotation(RequestTypeId.class);
+            if (requestTypeIdAnnotation == null || requestTypeIdAnnotation.value() <= 0) {
+                continue;
+            }
+
+            boolean blocking = false;
+            Blocking blockingAnnotation = method.getAnnotation(Blocking.class);
+            if (blockingAnnotation != null) {
+                blocking = true;
+            }
+
+            boolean broadcast = false;
+            Broadcast broadcastAnnotation = method.getAnnotation(Broadcast.class);
+            if (broadcastAnnotation != null) {
+                broadcast = true;
+            }
+
             boolean noRespond = false;
             NoRespond noRespondAnnotation = method.getAnnotation(NoRespond.class);
             if (noRespondAnnotation != null) {
@@ -248,20 +270,59 @@ public class RPCRegistry {
 
             boolean userObject = false;
             UserObject userObjectAnnotation = method.getAnnotation(UserObject.class);
-            if (userObjectAnnotation != null && method.getParameterTypes().length > 0) {
+            if (userObjectAnnotation != null) {
                 userObject = true;
             }
 
-            boolean broadcast = false;
-            Broadcast broadcastAnnotation = method.getAnnotation(Broadcast.class);
-            if (broadcastAnnotation != null && method.getParameterTypes().length > 0 && method.getParameterTypes()[0].isArray()) {
-                broadcast = true;
+//1. Blocking
+//2. Broadcast
+//3. NoRespond
+//4. RequestTypeId
+//5. Sequential
+//6. UserObject
+//
+//1. Blocking
+//   - if Broadcast => no Blocking
+//   - if NoRespond => no Blocking
+//2. Broadcast
+//   - if UserObject => second argument is an array
+//     else => first argument is an array
+//3. NoRespond
+//   - if return value type is not null => have Respond
+//   - if Blocking => have Respond (duplicated)
+//6. UserObject
+//   - if Broadcast => second argument is an array
+//     else => first argument is an array
+
+            if (broadcast && blocking) {
+                throw new ConditionConflictException(String.format("condition 'Broadcast' cannot use with 'Blocking'"));
+            }
+            if (noRespond && blocking) {
+                throw new ConditionConflictException(String.format("condition 'NoRespond' cannot use with 'Blocking'"));
             }
 
+            if (broadcast) {
+                if (userObject && (method.getParameterTypes().length < 2 || !method.getParameterTypes()[1].isArray())) {
+                    throw new ConditionConflictException(String.format("condition 'Broadcast' and 'UserObject' exist but the parameters length is less than 2 or second parameter is not an array"));
+                }
+                if (!userObject && (method.getParameterTypes().length < 1 || !method.getParameterTypes()[0].isArray())) {
+                    throw new ConditionConflictException(String.format("condition 'Broadcast' exist but the parameters length is less than 1 or first parameter is not an array"));
+                }
+            }
+
+            if (!method.getReturnType().equals(void.class) && noRespond) {
+                throw new ConditionConflictException(String.format("condition 'NoRespond' exist but the return type is not null"));
+            }
+
+            if (userObject && (method.getParameterTypes().length < 1 || method.getParameterTypes()[0].isArray())) {
+                throw new ConditionConflictException(String.format("condition 'UserObject' exist but the parameters length is less than 1 or the first argument is an array"));
+            }
+
+            methodCount++;
             methodList.add(new RPCRegistryMethod(method, null, noRespond, userObject, broadcast));
         }
 
-        return methods.length;
+        return methodCount;
     }
 
     protected static class RPCRegistryMethod {

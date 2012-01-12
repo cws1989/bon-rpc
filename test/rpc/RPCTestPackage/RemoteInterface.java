@@ -4,12 +4,14 @@ import java.util.List;
 import java.util.Map;
 import rpc.annotation.Blocking;
 import rpc.annotation.RequestTypeId;
+import rpc.annotation.UserObject;
 
 public interface RemoteInterface {
 
     @Blocking()
+    @UserObject()
     @RequestTypeId(4)
-    Double ljkihy(Map<Integer, List<String>> test);
+    Double ljkihy(int userObject, Map<Integer, List<String>> test);
 
     @Blocking()
     @RequestTypeId(5)
