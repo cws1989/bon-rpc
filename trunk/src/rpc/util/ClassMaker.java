@@ -25,6 +25,7 @@ import javassist.CtNewMethod;
 import javassist.NotFoundException;
 import rpc.RPC;
 import rpc.annotation.Blocking;
+import rpc.annotation.Broadcast;
 import rpc.annotation.NoRespond;
 import rpc.annotation.RequestTypeId;
 import rpc.annotation.UserObject;
@@ -141,6 +142,12 @@ public class ClassMaker {
                 blocking = true;
             }
 
+            boolean broadcast = false;
+            Broadcast broadcastAnnotation = method.getAnnotation(Broadcast.class);
+            if (broadcastAnnotation != null) {
+                broadcast = true;
+            }
+
             if (!method.getReturnType().equals(void.class)) {
                 respond = true;
                 blocking = true;
@@ -153,6 +160,8 @@ public class ClassMaker {
             methodBody.append(respond);
             methodBody.append(", ");
             methodBody.append(blocking);
+            methodBody.append(", ");
+            methodBody.append(broadcast);
             methodBody.append(");");
 
             // } catch (ClassCastException ex) { Logger.getLogger(this.getClass().getName()).log(Level.SEVERE, null, ex); }

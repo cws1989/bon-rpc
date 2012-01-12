@@ -240,7 +240,7 @@ public class RPC implements RemoteInput, Closeable {
         sequentialRespondIdSet[0] = _sequentialRespondIdSet[0];
         sequentialRespondList[0] = _sequentialRespondList[0];
 
-        localMethodMap[0] = new RPCRegistryMethod(null, null, false, false);
+        localMethodMap[0] = new RPCRegistryMethod(null, null, false, false, false);
         //</editor-fold>
     }
 
@@ -281,14 +281,23 @@ public class RPC implements RemoteInput, Closeable {
     }
 
     public void setUserObject(Object userObject) {
-        this.userObject = userObject;
+        if (userObject == null) {
+            this.rpcRegistry.remove(this.userObject);
+            this.userObject = userObject;
+        } else {
+            if (this.userObject != null) {
+                setUserObject(null);
+            }
+            this.rpcRegistry.put(userObject, this);
+            this.userObject = userObject;
+        }
     }
 
     public Object getUserObject() {
         return userObject;
     }
 
-    protected Object send(int requestTypeId, Object[] args, boolean respond, boolean blocking)
+    protected Object send(int requestTypeId, Object[] args, boolean respond, boolean blocking, boolean broadcast)
             throws IOException, UnsupportedDataTypeException {
         int requestId = 0;
         if (respond) {
@@ -312,6 +321,22 @@ public class RPC implements RemoteInput, Closeable {
                 }
             }
         }
+
+        if (broadcast) {
+            int broadcastListIndex = args[0] instanceof Object[] ? 0 : 1;
+            Object[] broadcastList = (Object[]) args[broadcastListIndex];
+            args[broadcastListIndex] = null;
+
+            for (Object _userObject : broadcastList) {
+                RPC _rpc = rpcRegistry.get(_userObject);
+                if (_rpc == null) {
+                    continue;
+                }
+                _rpc.send(requestTypeId, args, respond, false, false);
+            }
+            return null;
+        }
+
         return genericSend(false, requestId, requestTypeId, args, respond, blocking);
     }
 
