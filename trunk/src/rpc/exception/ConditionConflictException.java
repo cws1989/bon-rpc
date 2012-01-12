@@ -19,21 +19,21 @@ package rpc.exception;
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
  */
-public class ClassRegisteredException extends Exception {
+public class ConditionConflictException extends Exception {
 
-    public ClassRegisteredException() {
+    public ConditionConflictException() {
         super();
     }
 
-    public ClassRegisteredException(String message) {
+    public ConditionConflictException(String message) {
         super(message);
     }
 
-    public ClassRegisteredException(String message, Throwable cause) {
+    public ConditionConflictException(String message, Throwable cause) {
         super(message, cause);
     }
 
-    public ClassRegisteredException(Throwable cause) {
+    public ConditionConflictException(Throwable cause) {
         super(cause);
     }
 }

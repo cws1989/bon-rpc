@@ -130,27 +130,22 @@ public class ClassMaker {
                 continue;
             }
 
-            boolean respond = true;
-            NoRespond noRespondAnnotation = method.getAnnotation(NoRespond.class);
-            if (noRespondAnnotation != null) {
-                respond = false;
-            }
-
             boolean blocking = false;
             Blocking blockingAnnotation = method.getAnnotation(Blocking.class);
             if (blockingAnnotation != null) {
                 blocking = true;
             }
 
+            boolean respond = true;
+            NoRespond noRespondAnnotation = method.getAnnotation(NoRespond.class);
+            if (noRespondAnnotation != null) {
+                respond = false;
+            }
+
             boolean broadcast = false;
             Broadcast broadcastAnnotation = method.getAnnotation(Broadcast.class);
             if (broadcastAnnotation != null) {
                 broadcast = true;
-            }
-
-            if (!method.getReturnType().equals(void.class)) {
-                respond = true;
-                blocking = true;
             }
 
             // this.rpc.send(requestId, objects, respond, blocking); }
@@ -174,7 +169,7 @@ public class ClassMaker {
             methodBody.append("}");
 
             // add method to class
-//            System.out.println(methodBody.toString());
+            System.out.println(methodBody.toString());
             evalClass.addMethod(CtNewMethod.make(methodBody.toString(), evalClass));
         }
 
@@ -183,12 +178,12 @@ public class ClassMaker {
 
     protected static String getClassName(Class<?> clazz) {
         String className = clazz.getName();
-        if (className.indexOf(0) == '[') {
+        if (className.charAt(0) == '[') {
             int arrayCount = 0;
             String dataTypeName = null;
 
             char[] classNameChars = className.toCharArray();
-            for (int i = 0, iEnd = classNameChars.length; i < iEnd; i++) {
+            for (int i = 0, iEnd = classNameChars.length - (classNameChars[classNameChars.length - 1] == ';' ? 1 : 0); i < iEnd; i++) {
                 if (classNameChars[i] != '[') {
                     switch (classNameChars[i]) {
                         case 'B':
@@ -216,7 +211,7 @@ public class ClassMaker {
                             dataTypeName = "short";
                             break;
                         case 'L':
-                            dataTypeName = new String(classNameChars, i + 1, iEnd);
+                            dataTypeName = new String(classNameChars, i + 1, iEnd - i - 1);
                             break;
                     }
                     break;

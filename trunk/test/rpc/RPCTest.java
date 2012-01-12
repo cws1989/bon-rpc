@@ -81,6 +81,7 @@ public class RPCTest {
         rpcRegistry.registerLocal(RemoteInterface.class);
         rpcRegistry.registerLocal(RemoteInterface2.class);
         final RPC remoteRPC = rpcRegistry.getRPC();
+        remoteRPC.setUserObject(10);
 
         RemoteOutput localToRemote = new RemoteOutput() {
 
@@ -120,12 +121,17 @@ public class RPCTest {
         remoteRPC.setRemoteOutput(remoteToLocal);
 
         localRPC.bind(LocalInterface.class, new LocalInterface() {
+
+            @Override
+            public void notifyClient(Integer[] broadcastList) {
+                System.out.println("broadcast received");
+            }
         });
         remoteRPC.bind(RemoteInterface.class, new RemoteInterface() {
 
             @Override
-            public Double ljkihy(Map<Integer, List<String>> test) {
-                System.out.println("1");
+            public Double ljkihy(int userObject, Map<Integer, List<String>> test) {
+                System.out.println("1, userObject: " + userObject);
                 List<String> list = test.get(0);
                 System.out.println(list.get(0));
                 System.out.println(list.get(1));
@@ -158,6 +164,8 @@ public class RPCTest {
             }
         });
 
+        remoteRPC.getRemote(LocalInterface.class).notifyClient(new Integer[]{10});
+
         RemoteInterface serverIntl = localRPC.getRemote(RemoteInterface.class);
         System.out.println("reply: " + serverIntl.eval(111F));
         System.out.println("reply: " + serverIntl.eval(112F));
@@ -167,7 +175,7 @@ public class RPCTest {
         list.add("test");
         Map<Integer, List<String>> map = new HashMap<Integer, List<String>>();
         map.put(0, list);
-        serverIntl.ljkihy(map);
+        serverIntl.ljkihy(0, map);
         serverIntl.get(1);
         serverIntl.eval();
         System.out.println("reply: " + serverIntl.eval(112F));
