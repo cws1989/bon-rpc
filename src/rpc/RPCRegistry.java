@@ -19,6 +19,7 @@ package rpc;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +29,7 @@ import javassist.CannotCompileException;
 import javassist.NotFoundException;
 import rpc.RPC.RPCIdSet;
 import rpc.RPC.RPCRequest;
+import rpc.annotation.Broadcast;
 import rpc.annotation.NoRespond;
 import rpc.annotation.UserObject;
 import rpc.exception.ClassRegisteredException;
@@ -46,6 +48,7 @@ public class RPCRegistry {
     protected Runnable retryTask;
     protected Thread retryThread;
     protected final List<RPC> rpcList;
+    protected final Map<Object, RPC> userObjectRPCMap;
 
     public RPCRegistry() {
         localMethodRegistry = new ArrayList<RPCRegistryMethod>();
@@ -53,7 +56,8 @@ public class RPCRegistry {
         registeredLocalClasses = new HashMap<Class<?>, Integer>();
         registeredRemoteClasses = new HashMap<Class<?>, Integer>();
 
-        rpcList = new ArrayList<RPC>();
+        rpcList = Collections.synchronizedList(new ArrayList<RPC>());
+        userObjectRPCMap = Collections.synchronizedMap(new HashMap<Object, RPC>());
         retryTask = new Runnable() {
 
             @Override
@@ -94,13 +98,13 @@ public class RPCRegistry {
                                 for (RPCIdSet _idSet : idSetList) {
                                     if (_idSet.respondedId < _idSet.lastRespondId) {
                                         Object[] sendObject = _idSet.sequentialId == -1 ? new Object[]{1073741823} : new Object[]{_idSet.sequentialId, 1073741823};
-                                        rpc.send(0, sendObject, true, false);
+                                        rpc.send(0, sendObject, true, false, false);
                                         _idSet.lastRespondId = 1;
                                         _idSet.lastRespondIdSendTime = currentTime;
                                     }
                                     if (_idSet.respondedId - _idSet.lastRespondId > 100 || currentTime - _idSet.lastRespondIdSendTime > 30000) {
                                         Object[] sendObject = _idSet.sequentialId == -1 ? new Object[]{_idSet.respondedId} : new Object[]{_idSet.sequentialId, _idSet.respondedId};
-                                        rpc.send(0, sendObject, true, false);
+                                        rpc.send(0, sendObject, true, false, false);
                                         _idSet.lastRespondId = _idSet.respondedId;
                                         _idSet.lastRespondIdSendTime = currentTime;
                                     }
@@ -141,7 +145,7 @@ public class RPCRegistry {
                                 rpc.close();
                             } else if (lastReceiveTimeDiff > 10000 && currentTime - rpc.lastHeartBeatSendTime > 10000) {
                                 try {
-                                    rpc.send(0, new Object[]{null}, true, false);
+                                    rpc.send(0, new Object[]{null}, true, false, false);
                                     rpc.lastHeartBeatSendTime = currentTime;
                                 } catch (Exception ex) {
                                     LOG.log(Level.INFO, null, ex);
@@ -196,6 +200,18 @@ public class RPCRegistry {
         registeredRemoteClasses.clear();
     }
 
+    protected void put(Object userObject, RPC rpc) {
+        userObjectRPCMap.put(userObject, rpc);
+    }
+
+    protected RPC remove(Object userObject) {
+        return userObjectRPCMap.remove(userObject);
+    }
+
+    protected RPC get(Object userObject) {
+        return userObjectRPCMap.get(userObject);
+    }
+
     protected void remove(RPC rpc) {
         rpcList.remove(rpc);
     }
@@ -236,7 +252,13 @@ public class RPCRegistry {
                 userObject = true;
             }
 
-            methodList.add(new RPCRegistryMethod(method, null, noRespond, userObject));
+            boolean broadcast = false;
+            Broadcast broadcastAnnotation = method.getAnnotation(Broadcast.class);
+            if (broadcastAnnotation != null && method.getParameterTypes().length > 0 && method.getParameterTypes()[0].isArray()) {
+                broadcast = true;
+            }
+
+            methodList.add(new RPCRegistryMethod(method, null, noRespond, userObject, broadcast));
         }
 
         return methods.length;
@@ -248,12 +270,14 @@ public class RPCRegistry {
         protected Object instance;
         protected boolean noRespond;
         protected boolean userObject;
+        protected boolean broadcast;
 
-        protected RPCRegistryMethod(Method method, Object instance, boolean noRespond, boolean userObject) {
+        protected RPCRegistryMethod(Method method, Object instance, boolean noRespond, boolean userObject, boolean broadcast) {
             this.method = method;
             this.instance = instance;
             this.noRespond = noRespond;
             this.userObject = userObject;
+            this.broadcast = broadcast;
         }
     }
 }

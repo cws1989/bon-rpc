@@ -2,21 +2,21 @@ package rpc;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import rpc.transport.RemoteOutput;
-import java.util.HashMap;
-import java.util.List;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import static org.junit.Assert.*;
 import rpc.RPCTestPackage.LocalInterface;
 import rpc.RPCTestPackage.RemoteInterface;
 import rpc.RPCTestPackage.RemoteInterface2;
-import static org.junit.Assert.*;
+import rpc.transport.RemoteOutput;
 
 public class RPCTest {
 
@@ -40,7 +40,35 @@ public class RPCTest {
     }
 
     @Test
-    public void test() throws Exception {
+    public void test() throws Exception, Throwable {
+//        TestRunnable tr1 = new TestRunnable() {
+//
+//            @Override
+//            public void runTest() throws Throwable {
+//                this.delay(1000);
+//                assertTrue(false);
+//            }
+//        }, tr2 = new TestRunnable() {
+//
+//            @Override
+//            public void runTest() throws Throwable {
+//                assertTrue(false);
+//            }
+//        }, tr3 = new TestRunnable() {
+//
+//            @Override
+//            public void runTest() throws Throwable {
+//                assertTrue(false);
+//            }
+//        };
+//
+//        //pass that instance to the MTTR
+//        TestRunnable[] trs = {tr1, tr2, tr3};
+//        MultiThreadedTestRunner mttr = new MultiThreadedTestRunner(trs);
+//
+//        //kickstarts the MTTR & fires off threads
+//        mttr.runTestRunnables();
+
         RPCRegistry rpcRegistry = new RPCRegistry();
 
         rpcRegistry.registerLocal(LocalInterface.class);

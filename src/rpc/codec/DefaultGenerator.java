@@ -36,22 +36,20 @@ public class DefaultGenerator implements Generator {
     protected static final long UNSIGNED_6BYTES_MAX = 281474976710655L;
     protected OutputStream out;
     private final byte[] buffer = new byte[9];
+    protected ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
 
     protected DefaultGenerator() {
     }
 
     @Override
     public byte[] generate(Object data) throws UnsupportedDataTypeException {
-        return generate(32, data);
-    }
-
-    public byte[] generate(int size, Object data) throws UnsupportedDataTypeException {
         try {
-            ByteArrayOutputStream byteStream = new ByteArrayOutputStream(size);
             write(byteStream, data);
             return byteStream.toByteArray();
         } catch (IOException ex) {
             LOG.log(Level.SEVERE, null, ex);
+        } finally {
+            byteStream.reset();
         }
         return null;
     }
