@@ -112,7 +112,7 @@ public class ClassMaker {
                 methodBody.append("\n");
             } else {
                 methodBody.append("\t");
-                methodBody.append("Object[] objects = null;");
+                methodBody.append("Object[] objects = new Object[0];");
                 methodBody.append("\n");
             }
 

@@ -45,6 +45,10 @@ public class Packet {
         return requestId;
     }
 
+    /**
+     * Get the packet content. Note do not change the content in the object.
+     * @return the packet content
+     */
     public Object getContent() {
         return content;
     }

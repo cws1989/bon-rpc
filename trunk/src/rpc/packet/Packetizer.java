@@ -23,5 +23,5 @@ import rpc.codec.exception.UnsupportedDataTypeException;
  */
 public interface Packetizer {
 
-    byte[] pack(boolean isRespond, int requestTypeId, int requestId, Object[] args) throws UnsupportedDataTypeException;
+    byte[] pack(boolean isRespond, int requestTypeId, int requestId, Object content) throws UnsupportedDataTypeException;
 }

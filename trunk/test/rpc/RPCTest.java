@@ -39,6 +39,7 @@ public class RPCTest {
     @BeforeClass
     public static void setUpClass() throws Exception {
         System.out.println("***** " + getClassName() + " *****");
+
         Map<Integer, List<String>> map = new HashMap<Integer, List<String>>();
         map.put(0, Arrays.asList(new String[]{"rpc test", "rpc", "test"}));
         ArgumentsAssert.register("ljkihy", new Object[][]{new Object[]{10, map}, new Object[]{10, map}});
@@ -47,6 +48,7 @@ public class RPCTest {
     @AfterClass
     public static void tearDownClass() throws Exception {
         ArgumentsAssert.finish();
+
         System.out.println("******************************\r\n");
     }
 
@@ -122,8 +124,8 @@ public class RPCTest {
 
         Map<Integer, List<String>> map = new HashMap<Integer, List<String>>();
         map.put(0, Arrays.asList(new String[]{"r1pc test", "rpc", "test"}));
-        serverInterface.ljkihy(0, map);
-        serverInterface.ljkihy(0, map);
+        assertEquals(1.0F, serverInterface.ljkihy(0, map), 0F);
+        assertEquals(1.0F, serverInterface.ljkihy(0, map), 0F);
         serverInterface.get(1);
         serverInterface.eval();
         serverInterface2.abc();
