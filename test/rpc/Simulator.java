@@ -39,11 +39,7 @@ public class Simulator implements RemoteInput, RemoteOutput {
                                 break;
                             }
                         }
-                        try {
-                            Simulator.this.localRPC.feed(packet.b, packet.offset, packet.length);
-                        } catch (IOException ex) {
-                            LOG.log(Level.SEVERE, null, ex);
-                        }
+                        Simulator.this.localRPC.feed(packet.b, packet.offset, packet.length);
                     }
 
                     synchronized (receiveQueue) {
@@ -73,11 +69,7 @@ public class Simulator implements RemoteInput, RemoteOutput {
                             }
                         }
                         for (RPC rpc : Simulator.this.remoteRPC) {
-                            try {
-                                rpc.feed(packet.b, packet.offset, packet.length);
-                            } catch (IOException ex) {
-                                LOG.log(Level.SEVERE, null, ex);
-                            }
+                            rpc.feed(packet.b, packet.offset, packet.length);
                         }
                     }
 
@@ -108,7 +100,7 @@ public class Simulator implements RemoteInput, RemoteOutput {
     }
 
     @Override
-    public void feed(byte[] b, int offset, int length) throws IOException {
+    public void feed(byte[] b, int offset, int length) {
         synchronized (receiveQueue) {
             receiveQueue.add(new Packet(b, offset, length));
             receiveQueue.notifyAll();

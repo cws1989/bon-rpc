@@ -14,14 +14,38 @@
 //
 // You should have received a copy of the GNU Lesser General Public License
 // along with BON RPC.  If not, see <http://www.gnu.org/licenses/>.
-package rpc.transport;
-
-import java.io.IOException;
+package rpc.packet;
 
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
  */
-public interface RemoteInput {
+public class Packet {
 
-    void feed(byte[] b, int offset, int length);
+    protected final boolean respond;
+    protected final int requestTypeId;
+    protected final int requestId;
+    protected final Object content;
+
+    protected Packet(boolean isRespond, int requestTypeId, int requestId, Object content) {
+        this.respond = isRespond;
+        this.requestTypeId = requestTypeId;
+        this.requestId = requestId;
+        this.content = content;
+    }
+
+    public boolean isRespond() {
+        return respond;
+    }
+
+    public int getRequestTypeId() {
+        return requestTypeId;
+    }
+
+    public int getRequestId() {
+        return requestId;
+    }
+
+    public Object getContent() {
+        return content;
+    }
 }

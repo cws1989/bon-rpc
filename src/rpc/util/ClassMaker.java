@@ -81,10 +81,12 @@ public class ClassMaker {
                 parameterCount++;
             }
 
-            // ) throws java.io.IOException, UnsupportedDataTypeException {
+            // ) throws java.io.IOException, UnsupportedDataTypeException, InvocationFailedException {
             methodBody.append(") throws java.io.IOException, ");
             methodBody.append(rpcClass.getPackage().getName());
-            methodBody.append(".codec.exception.UnsupportedDataTypeException {");
+            methodBody.append(".codec.exception.UnsupportedDataTypeException, ");
+            methodBody.append(rpcClass.getPackage().getName());
+            methodBody.append(".exception.InvocationFailedException {");
             methodBody.append("\n");
 
             boolean userObject = false;
