@@ -31,8 +31,14 @@ public class RPCTest {
     public RPCTest() {
     }
 
+    protected static String getClassName() {
+        return new Object() {
+        }.getClass().getEnclosingClass().getName();
+    }
+
     @BeforeClass
     public static void setUpClass() throws Exception {
+        System.out.println("***** " + getClassName() + " *****");
         Map<Integer, List<String>> map = new HashMap<Integer, List<String>>();
         map.put(0, Arrays.asList(new String[]{"rpc test", "rpc", "test"}));
         ArgumentsAssert.register("ljkihy", new Object[][]{new Object[]{10, map}, new Object[]{10, map}});
@@ -41,6 +47,7 @@ public class RPCTest {
     @AfterClass
     public static void tearDownClass() throws Exception {
         ArgumentsAssert.finish();
+        System.out.println("******************************\r\n");
     }
 
     @Before

@@ -2,6 +2,7 @@ package rpc;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
@@ -65,21 +66,38 @@ public class ArgumentsAssert {
     public static boolean assertEquals(Object o1, Object o2) {
         if ((o1 == null && o2 != null) || (o1 != null && o2 == null)) {
             return false;
+        } else if (o1 == null && o2 == null) {
+            return true;
         }
         if (!o1.getClass().equals(o2.getClass())) {
             return false;
         }
         if (o1.getClass().isArray()) {
-            Object[] o1Array = (Object[]) o1;
-            Object[] o2Array = (Object[]) o2;
+            if (o1 instanceof byte[]) {
+                byte[] o1Array = (byte[]) o1;
+                byte[] o2Array = (byte[]) o2;
 
-            if (o1Array.length != o2Array.length) {
-                return false;
-            }
-
-            for (int i = 0, iEnd = o1Array.length; i < iEnd; i++) {
-                if (!assertEquals(o1Array[i], o2Array[i])) {
+                if (o1Array.length != o2Array.length) {
                     return false;
+                }
+
+                for (int i = 0, iEnd = o1Array.length; i < iEnd; i++) {
+                    if (!assertEquals(o1Array[i], o2Array[i])) {
+                        return false;
+                    }
+                }
+            } else {
+                Object[] o1Array = (Object[]) o1;
+                Object[] o2Array = (Object[]) o2;
+
+                if (o1Array.length != o2Array.length) {
+                    return false;
+                }
+
+                for (int i = 0, iEnd = o1Array.length; i < iEnd; i++) {
+                    if (!assertEquals(o1Array[i], o2Array[i])) {
+                        return false;
+                    }
                 }
             }
         } else if (o1 instanceof List) {
@@ -101,10 +119,13 @@ public class ArgumentsAssert {
                 return false;
             }
 
-            for (Object o1MapObj : o1Map.keySet()) {
-                if (!assertEquals(o1Map.remove(o1MapObj), o2Map.remove(o1MapObj))) {
+            Iterator<Object> iterator = o1Map.keySet().iterator();
+            while (iterator.hasNext()) {
+                Object o1MapObj = iterator.next();
+                if (!assertEquals(o1Map.get(o1MapObj), o2Map.remove(o1MapObj))) {
                     return false;
                 }
+                iterator.remove();
             }
 
             if (!o1Map.isEmpty()) {

@@ -180,14 +180,11 @@ public class DefaultGenerator implements Generator {
         }
 
         if (d <= 255) {
-            type |= 0x10;
             buffer[0] = (byte) type;
-
             buffer[1] = (byte) (d);
-
             return 2;
         } else {
-            type |= 0x20;
+            type |= 0x10;
             buffer[0] = (byte) type;
 
             buffer[1] = (byte) (d);
