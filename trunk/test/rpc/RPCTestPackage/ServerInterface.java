@@ -6,7 +6,7 @@ import rpc.annotation.Blocking;
 import rpc.annotation.RequestTypeId;
 import rpc.annotation.UserObject;
 
-public interface RemoteInterface {
+public interface ServerInterface {
 
     @Blocking()
     @UserObject()

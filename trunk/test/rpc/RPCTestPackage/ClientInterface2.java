@@ -3,7 +3,7 @@ package rpc.RPCTestPackage;
 import rpc.annotation.Blocking;
 import rpc.annotation.RequestTypeId;
 
-public interface LocalInterface2 {
+public interface ClientInterface2 {
 
     @Blocking()
     @RequestTypeId(70)

@@ -122,13 +122,8 @@ public class ClassMaker {
             }
 
             // read annotations
-            int requestTypeId = -1;
             RequestTypeId requestTypeIdAnnotation = method.getAnnotation(RequestTypeId.class);
-            if (requestTypeIdAnnotation != null && requestTypeIdAnnotation.value() > 0) {
-                requestTypeId = requestTypeIdAnnotation.value();
-            } else {
-                continue;
-            }
+            int requestTypeId = requestTypeIdAnnotation.value();
 
             boolean blocking = false;
             Blocking blockingAnnotation = method.getAnnotation(Blocking.class);
@@ -169,7 +164,7 @@ public class ClassMaker {
             methodBody.append("}");
 
             // add method to class
-            System.out.println(methodBody.toString());
+//            System.out.println(methodBody.toString());
             evalClass.addMethod(CtNewMethod.make(methodBody.toString(), evalClass));
         }
 

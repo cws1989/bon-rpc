@@ -1,11 +1,9 @@
 package rpc;
 
-import java.io.IOException;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -13,174 +11,115 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import static org.junit.Assert.*;
-import rpc.RPCTestPackage.LocalInterface;
-import rpc.RPCTestPackage.RemoteInterface;
-import rpc.RPCTestPackage.RemoteInterface2;
-import rpc.transport.RemoteOutput;
+import rpc.RPCTestPackage.ServerInterface;
+import rpc.RPCTestPackage.ServerInterface2;
+import rpc.RPCTestPackage.ServerInterface2Implementation;
+import rpc.RPCTestPackage.ServerInterfaceImplementation;
+import rpc.RPCTestPackage.ClientInterface;
+import rpc.RPCTestPackage.ClientInterface2;
+import rpc.RPCTestPackage.ClientInterface2Implementation;
+import rpc.RPCTestPackage.ClientInterfaceImplementation;
 
 public class RPCTest {
+
+    private static final Logger LOG = Logger.getLogger(RPCTest.class.getName());
+    protected RPCRegistry serverRPCRegistry;
+    protected RPCRegistry clientRPCRegistry;
+    protected Simulator serverToClientSimulator;
+    protected Simulator clientToServerSimulator;
 
     public RPCTest() {
     }
 
     @BeforeClass
     public static void setUpClass() throws Exception {
+        Map<Integer, List<String>> map = new HashMap<Integer, List<String>>();
+        map.put(0, Arrays.asList(new String[]{"rpc test", "rpc", "test"}));
+        ArgumentsAssert.register("ljkihy", new Object[][]{new Object[]{10, map}, new Object[]{10, map}});
     }
 
     @AfterClass
     public static void tearDownClass() throws Exception {
+        ArgumentsAssert.finish();
     }
 
     @Before
     public void setUp() {
+        serverRPCRegistry = new RPCRegistry();
+        clientRPCRegistry = new RPCRegistry();
+        serverToClientSimulator = null;
+        clientToServerSimulator = null;
     }
 
     @After
     public void tearDown() {
+        if (serverToClientSimulator != null) {
+            serverToClientSimulator.stop();
+        }
+        if (clientToServerSimulator != null) {
+            clientToServerSimulator.stop();
+        }
+        if (serverRPCRegistry != null) {
+            serverRPCRegistry.stop();
+        }
+        if (clientRPCRegistry != null) {
+            clientRPCRegistry.stop();
+        }
     }
 
     @Test
-    public void test() throws Exception, Throwable {
-//        TestRunnable tr1 = new TestRunnable() {
-//
-//            @Override
-//            public void runTest() throws Throwable {
-//                this.delay(1000);
-//                assertTrue(false);
-//            }
-//        }, tr2 = new TestRunnable() {
-//
-//            @Override
-//            public void runTest() throws Throwable {
-//                assertTrue(false);
-//            }
-//        }, tr3 = new TestRunnable() {
-//
-//            @Override
-//            public void runTest() throws Throwable {
-//                assertTrue(false);
-//            }
-//        };
-//
-//        //pass that instance to the MTTR
-//        TestRunnable[] trs = {tr1, tr2, tr3};
-//        MultiThreadedTestRunner mttr = new MultiThreadedTestRunner(trs);
-//
-//        //kickstarts the MTTR & fires off threads
-//        mttr.runTestRunnables();
-
-        RPCRegistry rpcRegistry = new RPCRegistry();
-
-        rpcRegistry.registerLocal(LocalInterface.class);
-        rpcRegistry.registerRemote(RemoteInterface.class);
-        rpcRegistry.registerRemote(RemoteInterface2.class);
-        final RPC localRPC = rpcRegistry.getRPC();
-
-        rpcRegistry.clear();
-        rpcRegistry.registerRemote(LocalInterface.class);
-        rpcRegistry.registerLocal(RemoteInterface.class);
-        rpcRegistry.registerLocal(RemoteInterface2.class);
-        final RPC remoteRPC = rpcRegistry.getRPC();
-        remoteRPC.setUserObject(10);
-
-        RemoteOutput localToRemote = new RemoteOutput() {
-
-            @Override
-            public void write(final byte[] b) throws IOException {
-                new Thread(new Runnable() {
-
-                    @Override
-                    public void run() {
-                        try {
-                            remoteRPC.feed(b, 0, b.length);
-                        } catch (IOException ex) {
-                            Logger.getLogger(RPCTest.class.getName()).log(Level.SEVERE, null, ex);
-                        }
-                    }
-                }).start();
-            }
-        };
-        RemoteOutput remoteToLocal = new RemoteOutput() {
-
-            @Override
-            public void write(final byte[] b) throws IOException {
-                new Thread(new Runnable() {
-
-                    @Override
-                    public void run() {
-                        try {
-                            localRPC.feed(b, 0, b.length);
-                        } catch (IOException ex) {
-                            Logger.getLogger(RPCTest.class.getName()).log(Level.SEVERE, null, ex);
-                        }
-                    }
-                }).start();
-            }
-        };
-        localRPC.setRemoteOutput(localToRemote);
-        remoteRPC.setRemoteOutput(remoteToLocal);
-
-        localRPC.bind(LocalInterface.class, new LocalInterface() {
-
-            @Override
-            public void notifyClient(Integer[] broadcastList) {
-                System.out.println("broadcast received");
-            }
-        });
-        remoteRPC.bind(RemoteInterface.class, new RemoteInterface() {
+    public void test() throws Throwable {
+        ServerInterface serverInterfaceImplementation = new ServerInterfaceImplementation() {
 
             @Override
             public Double ljkihy(int userObject, Map<Integer, List<String>> test) {
-                System.out.println("1, userObject: " + userObject);
-                List<String> list = test.get(0);
-                System.out.println(list.get(0));
-                System.out.println(list.get(1));
-                System.out.println(list.get(2));
-                return (double) 1F;
+                ArgumentsAssert.assertMatch("ljkihy", userObject, test);
+                return (double) 1.0F;
             }
+        };
 
-            @Override
-            public Double get(int x) {
-                System.out.println("2");
-                return null;
-            }
+        serverRPCRegistry.registerLocal(ServerInterface.class);
+        serverRPCRegistry.registerLocal(ServerInterface2.class);
+        serverRPCRegistry.registerRemote(ClientInterface.class);
+        serverRPCRegistry.registerRemote(ClientInterface2.class);
+        RPC serverRPC = serverRPCRegistry.getRPC();
+        serverRPC.bind(ServerInterface.class, serverInterfaceImplementation);
+        serverRPC.bind(ServerInterface2.class, new ServerInterface2Implementation());
+        serverRPC.setUserObject(10);
 
-            @Override
-            public Double eval(double x) {
-                System.out.println("3");
-                return x;
-            }
+        clientRPCRegistry.registerRemote(ServerInterface.class);
+        clientRPCRegistry.registerRemote(ServerInterface2.class);
+        clientRPCRegistry.registerLocal(ClientInterface.class);
+        clientRPCRegistry.registerLocal(ClientInterface2.class);
+        RPC clientRPC = clientRPCRegistry.getRPC();
+        clientRPC.bind(ClientInterface.class, new ClientInterfaceImplementation());
+        clientRPC.bind(ClientInterface2.class, new ClientInterface2Implementation());
 
-            @Override
-            public void eval() {
-                System.out.println("void void");
-            }
-        });
-        remoteRPC.bind(RemoteInterface2.class, new RemoteInterface2() {
 
-            @Override
-            public void abc() {
-                System.out.println("4");
-            }
-        });
+        // direct the output to correct RPC
+        serverToClientSimulator = new Simulator(serverRPC, clientRPC);
+        clientToServerSimulator = new Simulator(clientRPC, serverRPC);
+        serverRPC.setRemoteOutput(serverToClientSimulator);
+        clientRPC.setRemoteOutput(clientToServerSimulator);
 
-        remoteRPC.getRemote(LocalInterface.class).notifyClient(new Integer[]{10});
 
-        RemoteInterface serverIntl = localRPC.getRemote(RemoteInterface.class);
-        System.out.println("reply: " + serverIntl.eval(111F));
-        System.out.println("reply: " + serverIntl.eval(112F));
-        List<String> list = new ArrayList<String>();
-        list.add("rpc test");
-        list.add("rpc");
-        list.add("test");
+        // get the remote object
+        ServerInterface serverInterface = clientRPC.getRemote(ServerInterface.class);
+        ServerInterface2 serverInterface2 = clientRPC.getRemote(ServerInterface2.class);
+        ClientInterface clientInterface = serverRPC.getRemote(ClientInterface.class);
+        ClientInterface2 clientInterface2 = serverRPC.getRemote(ClientInterface2.class);
+
+
+        // remote procedure call start
+        clientInterface.notifyClient(new Integer[]{10});
+
         Map<Integer, List<String>> map = new HashMap<Integer, List<String>>();
-        map.put(0, list);
-        serverIntl.ljkihy(0, map);
-        serverIntl.get(1);
-        serverIntl.eval();
-        System.out.println("reply: " + serverIntl.eval(112F));
-        RemoteInterface2 serverIntl2 = localRPC.getRemote(RemoteInterface2.class);
-        serverIntl2.abc();
+        map.put(0, Arrays.asList(new String[]{"r1pc test", "rpc", "test"}));
+        serverInterface.ljkihy(0, map);
+        serverInterface.ljkihy(0, map);
+        serverInterface.get(1);
+        serverInterface.eval();
+        serverInterface2.abc();
 
         assertTrue(true);
     }

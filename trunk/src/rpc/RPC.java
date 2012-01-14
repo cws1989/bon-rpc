@@ -110,7 +110,7 @@ public class RPC implements RemoteInput, Closeable {
         int localSequentialIdMax = 0;
         for (RPCRegistryMethod method : localMethodRegistry) {
             RequestTypeId requestTypeId = method.method.getAnnotation(RequestTypeId.class);
-            if (requestTypeId != null && requestTypeId.value() > localMethodTypeIdMax) {
+            if (requestTypeId.value() > localMethodTypeIdMax) {
                 localMethodTypeIdMax = requestTypeId.value();
             }
 
@@ -130,9 +130,6 @@ public class RPC implements RemoteInput, Closeable {
 
         for (RPCRegistryMethod method : localMethodRegistry) {
             RequestTypeId requestTypeId = method.method.getAnnotation(RequestTypeId.class);
-            if (requestTypeId == null || requestTypeId.value() <= 0) {
-                continue;
-            }
 
             if (localMethodMap[requestTypeId.value()] != null) {
                 // find the class that has the this duplicated request type id
@@ -171,7 +168,7 @@ public class RPC implements RemoteInput, Closeable {
         int remoteSequentialIdMax = 0;
         for (RPCRegistryMethod method : remoteMethodRegistry) {
             RequestTypeId requestTypeId = method.method.getAnnotation(RequestTypeId.class);
-            if (requestTypeId != null && requestTypeId.value() > remoteMethodTypeIdMax) {
+            if (requestTypeId.value() > remoteMethodTypeIdMax) {
                 remoteMethodTypeIdMax = requestTypeId.value();
             }
 
@@ -189,9 +186,6 @@ public class RPC implements RemoteInput, Closeable {
 
         for (RPCRegistryMethod method : remoteMethodRegistry) {
             RequestTypeId requestTypeId = method.method.getAnnotation(RequestTypeId.class);
-            if (requestTypeId == null || requestTypeId.value() <= 0) {
-                continue;
-            }
 
             Sequential sequentialAnnotation = method.method.getAnnotation(Sequential.class);
             if (sequentialAnnotation != null) {
@@ -210,9 +204,6 @@ public class RPC implements RemoteInput, Closeable {
             Method[] methods = objClass.getMethods();
             for (Method method : methods) {
                 RequestTypeId requestTypeIdAnnotation = method.getAnnotation(RequestTypeId.class);
-                if (requestTypeIdAnnotation == null) {
-                    continue;
-                }
                 if (requestTypeIdList.indexOf((Integer) requestTypeIdAnnotation.value()) != -1) {
                     LOG.log(Level.SEVERE, "remote request type id duplicated, id: {0}, class: {1}, method: {2}", new Object[]{requestTypeIdAnnotation.value(), objClass.getName(), method.getName()});
                     continue;
@@ -374,6 +365,9 @@ public class RPC implements RemoteInput, Closeable {
                         throw new IOException("Thread interruptted when waiting for respond");
                     }
                 }
+                if (request.respond instanceof List) {
+                    throw new IOException("Remote method invoke failed");
+                }
                 return request.respond;
             }
         } else {
@@ -499,17 +493,17 @@ public class RPC implements RemoteInput, Closeable {
                 int _targetRespondedId = (Integer) args[1];
 
                 if (_targetSequenceId >= _sequentialRespondIdSet.length) {
-                    return null;
+                    return Arrays.asList(new Object[]{null, RPCError.REMOTE_CONNECTION_METHOD_NOT_REGISTERED.getValue()});
                 }
 
                 RPCIdSet _idSet = _sequentialRespondIdSet[_targetSequenceId];
                 Map<Integer, RPCRequest> _respondList = _sequentialRespondList[_targetSequenceId];
                 if (_idSet == null) {
-                    return null;
+                    return Arrays.asList(new Object[]{null, RPCError.REMOTE_CONNECTION_SEQUENTIAL_ID_NOT_REGISTERED.getValue()});
                 }
 
                 if (_targetRespondedId < _idSet.respondedId) {
-                    return null;
+                    return Arrays.asList(new Object[]{null, RPCError.RESPOND_ID_UPDATE_FAILED.getValue()});
                 }
                 for (int i = _idSet.respondedId; i <= _targetRespondedId; i++) {
                     _respondList.remove(i);
@@ -520,7 +514,7 @@ public class RPC implements RemoteInput, Closeable {
                 int _targetRespondedId = (Integer) args[0];
 
                 if (_targetRespondedId < respondIdSet.respondedId) {
-                    return null;
+                    return Arrays.asList(new Object[]{null, RPCError.RESPOND_ID_UPDATE_FAILED.getValue()});
                 }
                 for (int i = respondIdSet.respondedId; i <= _targetRespondedId; i++) {
                     respondList.remove(i);
@@ -537,18 +531,18 @@ public class RPC implements RemoteInput, Closeable {
 
         if (requestTypeId > localMethodMap.length) {
             LOG.log(Level.SEVERE, "requestTypeId {0} greater than array size {1}", new Object[]{requestTypeId, localMethodMap.length});
-            return returnObject;
+            return Arrays.asList(new Object[]{null, RPCError.REMOTE_CONNECTION_METHOD_NOT_REGISTERED.getValue()});
         }
 
         RPCRegistryMethod method = localMethodMap[requestTypeId];
         if (method == null) {
             LOG.log(Level.SEVERE, "method with requestTypeId {0} not found", new Object[]{requestTypeId});
-            return returnObject;
+            return Arrays.asList(new Object[]{null, RPCError.REMOTE_CONNECTION_METHOD_NOT_REGISTERED.getValue()});
         }
 
         if (method.instance == null) {
             LOG.log(Level.SEVERE, "instance with requestTypeId {0} not found", new Object[]{requestTypeId});
-            return null;
+            return Arrays.asList(new Object[]{null, RPCError.REMOTE_CONNECTION_METHOD_INSTANCE_NOT_REGISTERED.getValue()});
         }
 
         if (method.userObject) {
@@ -562,6 +556,7 @@ public class RPC implements RemoteInput, Closeable {
             returnObject = method.method.invoke(method.instance, args);
         } catch (Exception ex) {
             LOG.log(Level.SEVERE, null, ex);
+            return Arrays.asList(new Object[]{null, RPCError.REMOTE_METHOD_INVOKE_ERROR.getValue()});
         }
 
         return returnObject;
@@ -571,7 +566,7 @@ public class RPC implements RemoteInput, Closeable {
         return objClass.cast(remoteImplementations.get(objClass));
     }
 
-    public void bind(Class<?> objectClass, Object instance) {
+    public <T> void bind(Class<T> objectClass, T instance) {
         Integer methodRegistryIndex;
         if ((methodRegistryIndex = registeredLocalClasses.get(objectClass)) == null) {
             LOG.log(Level.SEVERE, "class {0} not registered", objectClass.getName());
@@ -659,8 +654,34 @@ public class RPC implements RemoteInput, Closeable {
                 RPCRequest request = _requestList.get(_requestId);
                 if (request != null) {
                     if (contentList.size() != 1) {
-                        LOG.log(Level.SEVERE, "size of the respond list is incorrect");
-                        return;
+                        if (contentList.size() == 2
+                                && contentList.get(0) == null && contentList.get(1) instanceof Short) {
+                            RPCError rpcError = RPCError.getRPCError((Short) contentList.get(1));
+                            if (rpcError == null) {
+                                LOG.log(Level.SEVERE, String.format("error code not found, code: %1$d", (Short) contentList.get(1)));
+                                return;
+                            }
+                            switch (rpcError) {
+                                case REMOTE_CONNECTION_METHOD_NOT_REGISTERED:
+                                    LOG.log(Level.SEVERE, "method not registered by remote connection");
+                                    break;
+                                case REMOTE_CONNECTION_METHOD_INSTANCE_NOT_REGISTERED:
+                                    LOG.log(Level.SEVERE, "instance not binded by remote connection");
+                                    break;
+                                case REMOTE_CONNECTION_SEQUENTIAL_ID_NOT_REGISTERED:
+                                    LOG.log(Level.SEVERE, "sequential id not registered by remote connection");
+                                    break;
+                                case REMOTE_METHOD_INVOKE_ERROR:
+                                    LOG.log(Level.SEVERE, "error occurred when remote connection invoking method");
+                                    break;
+                                case RESPOND_ID_UPDATE_FAILED:
+                                    LOG.log(Level.SEVERE, "respond id update failed");
+                                    break;
+                            }
+                        } else {
+                            LOG.log(Level.SEVERE, "size of the respond list is incorrect");
+                            return;
+                        }
                     }
                     request.respond = contentList.get(0);
                     synchronized (request) {
@@ -1134,7 +1155,7 @@ public class RPC implements RemoteInput, Closeable {
         protected Object respond;
 
         protected RPCRequest(int requestId, long time, byte[] packetData) {
-            this(0, requestId, time, packetData, null);
+            this(0, requestId, time, packetData, null, null);
         }
 
         protected RPCRequest(int requestTypeId, int requestId, long time, Object requestArgs, Object respond) {
