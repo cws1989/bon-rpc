@@ -36,7 +36,7 @@ public class DefaultPacketizer implements Packetizer {
     }
 
     @Override
-    public byte[] pack(boolean isRespond, int requestTypeId, int requestId, Object[] args) throws UnsupportedDataTypeException {
+    public byte[] pack(boolean isRespond, int requestTypeId, int requestId, Object content) throws UnsupportedDataTypeException {
         //<editor-fold defaultstate="collapsed" desc="prepare requestId and requestTypeId">
         int sendBufferIndex = 0;
         byte[] sendBuffer = new byte[6];
@@ -76,13 +76,13 @@ public class DefaultPacketizer implements Packetizer {
         }
         //</editor-fold>
 
-        byte[] content = CodecFactory.getGenerator().generate(args == null ? new ArrayList<Object>() : Arrays.asList(args));
-        if (content == null) {
+        byte[] contentByte = CodecFactory.getGenerator().generate(content);
+        if (contentByte == null) {
             throw new UnsupportedDataTypeException("error occurred when packing the data");
         }
 
         //<editor-fold defaultstate="collapsed" desc="prepare packet">
-        int packetLength = content.length;
+        int packetLength = contentByte.length;
         int packetLengthByteLength = 0;
         if (packetLength <= 255) {
             packetLengthByteLength = 2;
@@ -93,7 +93,7 @@ public class DefaultPacketizer implements Packetizer {
         } else {
             packetLengthByteLength = 16;
         }
-        int byteLength = 2 + packetLengthByteLength + sendBufferIndex + content.length + 4;
+        int byteLength = 2 + packetLengthByteLength + sendBufferIndex + contentByte.length + 4;
 
         int packetBufferIndex = 0;
         byte[] packetBuffer = new byte[byteLength];
@@ -129,12 +129,12 @@ public class DefaultPacketizer implements Packetizer {
 
         System.arraycopy(sendBuffer, 0, packetBuffer, packetBufferIndex, sendBufferIndex);
         packetBufferIndex += sendBufferIndex;
-        System.arraycopy(content, 0, packetBuffer, packetBufferIndex, content.length);
-        packetBufferIndex += content.length;
+        System.arraycopy(contentByte, 0, packetBuffer, packetBufferIndex, contentByte.length);
+        packetBufferIndex += contentByte.length;
 
         CRC32 crc32 = new CRC32();
         crc32.update(sendBuffer, 0, sendBufferIndex);
-        crc32.update(content);
+        crc32.update(contentByte);
 
         long crc32Value = crc32.getValue();
         packetBuffer[packetBufferIndex++] = (byte) (crc32Value);

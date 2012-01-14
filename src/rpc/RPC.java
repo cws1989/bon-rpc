@@ -295,6 +295,7 @@ public class RPC implements RemoteInput, Closeable {
                             }
                         }
                         request.respond = contentList.get(0);
+                        request.responded = true;
                         synchronized (request) {
                             request.notifyAll();
                         }
@@ -309,7 +310,7 @@ public class RPC implements RemoteInput, Closeable {
 
                                 RPCRequest _request = null;
                                 while ((_request = _requestList.get(_idSet.respondedId)) != null) {
-                                    if (_request.respond == null) {
+                                    if (!_request.responded) {
                                         break;
                                     }
                                     _requestList.remove(_idSet.respondedId);
@@ -420,6 +421,24 @@ public class RPC implements RemoteInput, Closeable {
                 listener.rpcClosed();
             }
         }
+
+        List<Map<Integer, RPCRequest>> requestListList = new ArrayList<Map<Integer, RPCRequest>>();
+        requestListList.add(requestList);
+        for (int i = 0, iEnd = _sequentialRequestList.length; i < iEnd; i++) {
+            Map<Integer, RPCRequest> _requestList = _sequentialRequestList[i];
+            if (_requestList != null) {
+                requestListList.add(_requestList);
+            }
+        }
+        for (Map<Integer, RPCRequest> _requestList : requestListList) {
+            for (RPCRequest _request : _requestList.values()) {
+                if (!_request.responded) {
+                    synchronized (_request) {
+                        _request.notifyAll();
+                    }
+                }
+            }
+        }
     }
 
     public void setRemoteOutput(RemoteOutput out) {
@@ -450,13 +469,14 @@ public class RPC implements RemoteInput, Closeable {
     protected Object send(int requestTypeId, Object[] args, boolean respond, boolean blocking, boolean broadcast)
             throws IOException, UnsupportedDataTypeException, InvocationFailedException {
         int requestId = 0;
+        Map<Integer, RPCRequest> _requestList = null;
         if (respond) {
             if (requestTypeId >= sequentialRequestIdSet.length) {
                 return null;
             }
 
             RPCIdSet _idSet = sequentialRequestIdSet[requestTypeId];
-            Map<Integer, RPCRequest> _requestList = sequentialRequestList[requestTypeId];
+            _requestList = sequentialRequestList[requestTypeId];
             if (_requestList == null) {
                 _idSet = requestIdSet;
                 _requestList = requestList;
@@ -487,25 +507,25 @@ public class RPC implements RemoteInput, Closeable {
             return null;
         }
 
-        return genericSend(false, requestTypeId, requestId, args, respond, blocking);
+        return genericSend(_requestList, false, requestTypeId, requestId, args, respond, blocking);
     }
 
     protected void respond(int requestId, int requestTypeId, Object respond)
             throws IOException, UnsupportedDataTypeException {
         try {
-            genericSend(true, requestTypeId, requestId, new Object[]{respond}, false, false);
+            genericSend(null, true, requestTypeId, requestId, new Object[]{respond}, false, false);
         } catch (InvocationFailedException ex) {
             LOG.log(Level.SEVERE, "Respond should not cause invocation failed exception", ex);
         }
     }
 
-    protected Object genericSend(boolean isRespond, int requestTypeId, int requestId, Object[] args, boolean respond, boolean blocking)
+    protected Object genericSend(Map<Integer, RPCRequest> requestList, boolean isRespond, int requestTypeId, int requestId, Object[] args, boolean respond, boolean blocking)
             throws IOException, UnsupportedDataTypeException, InvocationFailedException {
-        byte[] packetData = packetizer.pack(isRespond, requestTypeId, requestId, args);
-        return genericSend(packetData, requestId, respond, blocking);
+        byte[] packetData = packetizer.pack(isRespond, requestTypeId, requestId, Arrays.asList(args));
+        return genericSend(requestList, packetData, requestId, respond, blocking);
     }
 
-    protected Object genericSend(byte[] packetData, int requestId, boolean respond, boolean blocking) throws IOException, InvocationFailedException {
+    protected Object genericSend(Map<Integer, RPCRequest> requestList, byte[] packetData, int requestId, boolean respond, boolean blocking) throws IOException, InvocationFailedException {
         // isolate this out for test purpose
         if (out == null) {
             throw new IOException("RemoteOutput is not set");
@@ -515,7 +535,9 @@ public class RPC implements RemoteInput, Closeable {
 
         if (respond) {
             RPCRequest request = new RPCRequest(requestId, System.currentTimeMillis(), packetData);
-            requestList.put(requestId, request);
+            if (!requestList.containsKey(requestId)) {
+                requestList.put(requestId, request);
+            }
 
             if (!blocking) {
                 return null;
@@ -527,6 +549,9 @@ public class RPC implements RemoteInput, Closeable {
                         Thread.currentThread().interrupt();
                         throw new IOException("Thread interruptted when waiting for respond");
                     }
+                }
+                if (!request.responded) {
+                    throw new IOException("Connection closed");
                 }
                 if (request.respond instanceof List) {
                     throw new InvocationFailedException("Remote method invoke failed");
@@ -665,9 +690,9 @@ public class RPC implements RemoteInput, Closeable {
         protected RPCIdSet(int sequentialId) {
             this.sequentialId = sequentialId;
             id = 1;
-            respondedId = 0;
+            respondedId = 1;
 
-            lastRespondId = 1;
+            lastRespondId = 0;
             lastRespondIdSendTime = System.currentTimeMillis();
         }
     }
@@ -680,6 +705,7 @@ public class RPC implements RemoteInput, Closeable {
         protected byte[] packetData;
         protected Object requestArgs;
         protected Object respond;
+        protected boolean responded;
 
         protected RPCRequest(int requestId, long time, byte[] packetData) {
             this(0, requestId, time, packetData, null, null);
@@ -696,6 +722,7 @@ public class RPC implements RemoteInput, Closeable {
             this.packetData = packetData;
             this.requestArgs = requestArgs;
             this.respond = respond;
+            responded = false;
         }
     }
 }

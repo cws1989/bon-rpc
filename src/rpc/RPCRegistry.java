@@ -96,23 +96,24 @@ public class RPCRegistry {
                             try {
                                 List<RPCIdSet> idSetList = new ArrayList<RPCIdSet>();
                                 idSetList.add(rpc.requestIdSet);
-                                for (int i = 0, iEnd = rpc.sequentialRequestIdSet.length; i < iEnd; i++) {
-                                    RPCIdSet _idSet = rpc.sequentialRequestIdSet[i];
+                                for (int i = 0, iEnd = rpc._sequentialRequestIdSet.length; i < iEnd; i++) {
+                                    RPCIdSet _idSet = rpc._sequentialRequestIdSet[i];
                                     if (_idSet != null) {
                                         idSetList.add(_idSet);
                                     }
                                 }
                                 for (RPCIdSet _idSet : idSetList) {
-                                    if (_idSet.respondedId < _idSet.lastRespondId) {
+                                    int lastRespondReceivedId = _idSet.respondedId - 1;
+                                    if (lastRespondReceivedId < _idSet.lastRespondId) {
                                         Object[] sendObject = _idSet.sequentialId == -1 ? new Object[]{1073741823} : new Object[]{_idSet.sequentialId, 1073741823};
                                         rpc.send(0, sendObject, true, false, false);
-                                        _idSet.lastRespondId = 1;
+                                        _idSet.lastRespondId = 0;
                                         _idSet.lastRespondIdSendTime = currentTime;
                                     }
-                                    if (_idSet.respondedId - _idSet.lastRespondId > 100 || currentTime - _idSet.lastRespondIdSendTime > 30000) {
-                                        Object[] sendObject = _idSet.sequentialId == -1 ? new Object[]{_idSet.respondedId} : new Object[]{_idSet.sequentialId, _idSet.respondedId};
+                                    if (lastRespondReceivedId - _idSet.lastRespondId > 100 || currentTime - _idSet.lastRespondIdSendTime > 30000) {
+                                        Object[] sendObject = _idSet.sequentialId == -1 ? new Object[]{lastRespondReceivedId} : new Object[]{_idSet.sequentialId, lastRespondReceivedId};
                                         rpc.send(0, sendObject, true, false, false);
-                                        _idSet.lastRespondId = _idSet.respondedId;
+                                        _idSet.lastRespondId = lastRespondReceivedId;
                                         _idSet.lastRespondIdSendTime = currentTime;
                                     }
                                 }
@@ -124,8 +125,8 @@ public class RPCRegistry {
                             //<editor-fold defaultstate="collapsed" desc="retry send request">
                             List<Map<Integer, RPCRequest>> requestListList = new ArrayList<Map<Integer, RPCRequest>>();
                             requestListList.add(rpc.requestList);
-                            for (int i = 0, iEnd = rpc.sequentialRequestIdSet.length; i < iEnd; i++) {
-                                Map<Integer, RPCRequest> _requestList = rpc.sequentialRequestList[i];
+                            for (int i = 0, iEnd = rpc._sequentialRequestList.length; i < iEnd; i++) {
+                                Map<Integer, RPCRequest> _requestList = rpc._sequentialRequestList[i];
                                 if (_requestList != null) {
                                     requestListList.add(_requestList);
                                 }
@@ -133,9 +134,9 @@ public class RPCRegistry {
                             for (Map<Integer, RPCRequest> _requestList : requestListList) {
                                 synchronized (_requestList) {
                                     for (RPCRequest _request : _requestList.values()) {
-                                        if (_request.respond == null && currentTime - _request.time > 5000) {
+                                        if (!_request.responded && currentTime - _request.time > 5000) {
                                             try {
-                                                rpc.genericSend(_request.packetData, _request.requestId, true, false);
+                                                rpc.genericSend(_requestList, _request.packetData, _request.requestId, true, false);
                                             } catch (Exception ex) {
                                                 LOG.log(Level.INFO, null, ex);
                                             }
@@ -188,7 +189,7 @@ public class RPCRegistry {
             if (retryThread != null) {
                 return;
             }
-            retryThread = new Thread(retryTask);
+            retryThread = new Thread(retryTask, "RPCRegistry");
             retryThread.start();
         }
     }
@@ -338,9 +339,9 @@ public class RPCRegistry {
 
         protected final Method method;
         protected Object instance;
-        protected boolean noRespond;
-        protected boolean userObject;
-        protected boolean broadcast;
+        protected final boolean noRespond;
+        protected final boolean userObject;
+        protected final boolean broadcast;
 
         protected RPCRegistryMethod(Method method, Object instance, boolean noRespond, boolean userObject, boolean broadcast) {
             this.method = method;

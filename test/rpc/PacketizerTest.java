@@ -1,5 +1,6 @@
 package rpc;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import rpc.packet.DepacketizerListener;
@@ -83,7 +84,7 @@ public class PacketizerTest {
                                 assertTrue(ArgumentsAssert.assertEquals(args, ((List<Object>) packet.getContent()).toArray()));
                             }
                         });
-                        byte[] packetByte = packetizer.pack(_isRespond, _requestTypeId, _requestId, _args);
+                        byte[] packetByte = packetizer.pack(_isRespond, _requestTypeId, _requestId, Arrays.asList(_args));
                         depacketizer.unpack(packetByte, 0, packetByte.length);
                         assertTrue(packetReceived.get());
                     }
