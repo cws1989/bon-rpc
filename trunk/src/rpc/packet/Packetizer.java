@@ -14,14 +14,14 @@
 //
 // You should have received a copy of the GNU Lesser General Public License
 // along with BON RPC.  If not, see <http://www.gnu.org/licenses/>.
-package rpc.transport;
+package rpc.packet;
 
-import java.io.IOException;
+import rpc.codec.exception.UnsupportedDataTypeException;
 
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
  */
-public interface RemoteInput {
+public interface Packetizer {
 
-    void feed(byte[] b, int offset, int length);
+    byte[] generatePacket(boolean isRespond, int requestTypeId, int requestId, Object[] args) throws UnsupportedDataTypeException;
 }

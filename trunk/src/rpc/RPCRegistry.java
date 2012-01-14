@@ -16,7 +16,6 @@
 // along with BON RPC.  If not, see <http://www.gnu.org/licenses/>.
 package rpc;
 
-import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -132,7 +131,7 @@ public class RPCRegistry {
                                         if (_request.respond == null && currentTime - _request.time > 5000) {
                                             try {
                                                 rpc.genericSend(_request.packetData, _request.requestId, true, false);
-                                            } catch (IOException ex) {
+                                            } catch (Exception ex) {
                                                 LOG.log(Level.INFO, null, ex);
                                             }
                                             _request.time = currentTime;
@@ -241,13 +240,11 @@ public class RPCRegistry {
 
         classMap.put(objectClass, methodList.size());
 
-        int methodCount = 0;
-
         Method[] methods = objectClass.getDeclaredMethods();
         for (Method method : methods) {
             RequestTypeId requestTypeIdAnnotation = method.getAnnotation(RequestTypeId.class);
             if (requestTypeIdAnnotation == null || requestTypeIdAnnotation.value() <= 0) {
-                continue;
+                throw new ConditionConflictException(String.format("'RequestTypeId' not found, class: %1$s, function: %2$s", objectClass.getName(), method.getName()));
             }
 
             boolean blocking = false;
@@ -284,6 +281,7 @@ public class RPCRegistry {
 //1. Blocking
 //   - if Broadcast => no Blocking
 //   - if NoRespond => no Blocking
+//   - if return value type is not null => Blocking
 //2. Broadcast
 //   - if UserObject => second argument is an array
 //     else => first argument is an array
@@ -295,34 +293,36 @@ public class RPCRegistry {
 //     else => first argument is an array
 
             if (broadcast && blocking) {
-                throw new ConditionConflictException(String.format("condition 'Broadcast' cannot use with 'Blocking'"));
+                throw new ConditionConflictException(String.format("condition 'Broadcast' cannot use with 'Blocking', class: %1$s, function: %2$s", objectClass.getName(), method.getName()));
             }
             if (noRespond && blocking) {
-                throw new ConditionConflictException(String.format("condition 'NoRespond' cannot use with 'Blocking'"));
+                throw new ConditionConflictException(String.format("condition 'NoRespond' cannot use with 'Blocking', class: %1$s, function: %2$s", objectClass.getName(), method.getName()));
+            }
+            if (!method.getReturnType().equals(void.class) && !blocking) {
+                throw new ConditionConflictException(String.format("return type is not void but condition 'Blocking' not exist , class: %1$s, function: %2$s", objectClass.getName(), method.getName()));
             }
 
             if (broadcast) {
                 if (userObject && (method.getParameterTypes().length < 2 || !method.getParameterTypes()[1].isArray())) {
-                    throw new ConditionConflictException(String.format("condition 'Broadcast' and 'UserObject' exist but the parameters length is less than 2 or second parameter is not an array"));
+                    throw new ConditionConflictException(String.format("condition 'Broadcast' and 'UserObject' exist but the parameters length is less than 2 or second parameter is not an array, class: %1$s, function: %2$s", objectClass.getName(), method.getName()));
                 }
                 if (!userObject && (method.getParameterTypes().length < 1 || !method.getParameterTypes()[0].isArray())) {
-                    throw new ConditionConflictException(String.format("condition 'Broadcast' exist but the parameters length is less than 1 or first parameter is not an array"));
+                    throw new ConditionConflictException(String.format("condition 'Broadcast' exist but the parameters length is less than 1 or first parameter is not an array, class: %1$s, function: %2$s", objectClass.getName(), method.getName()));
                 }
             }
 
             if (!method.getReturnType().equals(void.class) && noRespond) {
-                throw new ConditionConflictException(String.format("condition 'NoRespond' exist but the return type is not null"));
+                throw new ConditionConflictException(String.format("condition 'NoRespond' exist but the return type is not null, class: %1$s, function: %2$s", objectClass.getName(), method.getName()));
             }
 
             if (userObject && (method.getParameterTypes().length < 1 || method.getParameterTypes()[0].isArray())) {
-                throw new ConditionConflictException(String.format("condition 'UserObject' exist but the parameters length is less than 1 or the first argument is an array"));
+                throw new ConditionConflictException(String.format("condition 'UserObject' exist but the parameters length is less than 1 or the first argument is an array, class: %1$s, function: %2$s", objectClass.getName(), method.getName()));
             }
 
-            methodCount++;
             methodList.add(new RPCRegistryMethod(method, null, noRespond, userObject, broadcast));
         }
 
-        return methodCount;
+        return methods.length;
     }
 
     protected static class RPCRegistryMethod {

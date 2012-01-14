@@ -14,14 +14,26 @@
 //
 // You should have received a copy of the GNU Lesser General Public License
 // along with BON RPC.  If not, see <http://www.gnu.org/licenses/>.
-package rpc.transport;
-
-import java.io.IOException;
+package rpc.exception;
 
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
  */
-public interface RemoteInput {
+public class InvocationFailedException extends Exception {
 
-    void feed(byte[] b, int offset, int length);
+    public InvocationFailedException() {
+        super();
+    }
+
+    public InvocationFailedException(String message) {
+        super(message);
+    }
+
+    public InvocationFailedException(String message, Throwable cause) {
+        super(message, cause);
+    }
+
+    public InvocationFailedException(Throwable cause) {
+        super(cause);
+    }
 }

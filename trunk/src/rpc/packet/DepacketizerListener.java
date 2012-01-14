@@ -14,14 +14,12 @@
 //
 // You should have received a copy of the GNU Lesser General Public License
 // along with BON RPC.  If not, see <http://www.gnu.org/licenses/>.
-package rpc.transport;
-
-import java.io.IOException;
+package rpc.packet;
 
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
  */
-public interface RemoteInput {
+public interface DepacketizerListener {
 
-    void feed(byte[] b, int offset, int length);
+    void packetReceived(Packet packet);
 }
