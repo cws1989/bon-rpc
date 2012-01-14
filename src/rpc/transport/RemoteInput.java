@@ -16,8 +16,6 @@
 // along with BON RPC.  If not, see <http://www.gnu.org/licenses/>.
 package rpc.transport;
 
-import java.io.IOException;
-
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
  */

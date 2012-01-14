@@ -47,5 +47,5 @@ public abstract class Depacketizer {
         listeners.clear();
     }
 
-    public abstract void feed(byte[] b, int offset, int length);
+    public abstract void unpack(byte[] b, int offset, int length);
 }

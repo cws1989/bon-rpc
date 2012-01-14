@@ -16,12 +16,13 @@
 // along with BON RPC.  If not, see <http://www.gnu.org/licenses/>.
 package rpc.transport;
 
+import java.io.Closeable;
 import java.io.IOException;
 
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
  */
-public interface RemoteOutput {
+public interface RemoteOutput extends Closeable {
 
     void write(byte b[]) throws IOException;
 }

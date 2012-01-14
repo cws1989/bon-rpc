@@ -53,7 +53,7 @@ public class DefaultDepacketizer extends Depacketizer {
     }
 
     @Override
-    public void feed(byte[] b, int offset, int length) {
+    public void unpack(byte[] b, int offset, int length) {
         int start = offset, end = offset + length;
 
         try {
@@ -300,7 +300,7 @@ public class DefaultDepacketizer extends Depacketizer {
             }
         } finally {
             if (start != end) {
-                feed(b, start, end - start);
+                unpack(b, start, end - start);
             }
         }
     }
@@ -312,28 +312,28 @@ public class DefaultDepacketizer extends Depacketizer {
             }
             byte[] __packetLengthBuffer = new byte[_packetLengthBufferRead];
             System.arraycopy(_packetLengthBuffer, 0, __packetLengthBuffer, 0, _packetLengthBufferRead);
-            feed(__packetLengthBuffer, 0, _packetLengthBufferRead);
+            unpack(__packetLengthBuffer, 0, _packetLengthBufferRead);
 
             if (_infoBufferRead > 0) {
                 break;
             }
             byte[] __infoBuffer = new byte[_infoBufferRead];
             System.arraycopy(_infoBuffer, 0, __infoBuffer, 0, _infoBufferRead);
-            feed(__infoBuffer, 0, _infoBufferRead);
+            unpack(__infoBuffer, 0, _infoBufferRead);
 
             if (_packetLength > 0) {
                 break;
             }
             byte[] __content = new byte[_packetLength];
             System.arraycopy(_content, 0, __content, 0, _packetLength);
-            feed(__content, 0, _packetLength);
+            unpack(__content, 0, _packetLength);
 
             if (_crcBufferRead > 0) {
                 break;
             }
             byte[] __crcBuffer = new byte[_crcBufferRead];
             System.arraycopy(_crcBuffer, 0, __crcBuffer, 0, _crcBufferRead);
-            feed(__crcBuffer, 0, _crcBufferRead);
+            unpack(__crcBuffer, 0, _crcBufferRead);
         } while (false);
     }
 

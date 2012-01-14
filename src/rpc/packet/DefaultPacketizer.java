@@ -36,7 +36,7 @@ public class DefaultPacketizer implements Packetizer {
     }
 
     @Override
-    public byte[] generatePacket(boolean isRespond, int requestTypeId, int requestId, Object[] args) throws UnsupportedDataTypeException {
+    public byte[] pack(boolean isRespond, int requestTypeId, int requestId, Object[] args) throws UnsupportedDataTypeException {
         //<editor-fold defaultstate="collapsed" desc="prepare requestId and requestTypeId">
         int sendBufferIndex = 0;
         byte[] sendBuffer = new byte[6];

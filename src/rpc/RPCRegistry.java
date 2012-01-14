@@ -16,8 +16,11 @@
 // along with BON RPC.  If not, see <http://www.gnu.org/licenses/>.
 package rpc;
 
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -33,6 +36,8 @@ import rpc.annotation.Broadcast;
 import rpc.annotation.NoRespond;
 import rpc.annotation.RequestTypeId;
 import rpc.annotation.UserObject;
+import rpc.codec.CodecFactory;
+import rpc.codec.exception.UnsupportedDataTypeException;
 import rpc.exception.ClassRegisteredException;
 import rpc.exception.ConditionConflictException;
 
@@ -144,7 +149,11 @@ public class RPCRegistry {
                             //<editor-fold defaultstate="collapsed" desc="heart beat">
                             long lastReceiveTimeDiff = currentTime - rpc.lastPacketReceiveTime;
                             if (lastReceiveTimeDiff > 35000) {
-                                rpc.close();
+                                try {
+                                    rpc.close();
+                                } catch (IOException ex) {
+                                    LOG.log(Level.SEVERE, null, ex);
+                                }
                             } else if (lastReceiveTimeDiff > 10000 && currentTime - rpc.lastHeartBeatSendTime > 10000) {
                                 try {
                                     rpc.send(0, new Object[]{null}, true, false, false);

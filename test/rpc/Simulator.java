@@ -3,7 +3,6 @@ package rpc;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Queue;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 import rpc.transport.RemoteInput;
 import rpc.transport.RemoteOutput;
@@ -113,6 +112,11 @@ public class Simulator implements RemoteInput, RemoteOutput {
             sendQueue.add(new Packet(b, 0, b.length));
             sendQueue.notifyAll();
         }
+    }
+
+    @Override
+    public void close() throws IOException {
+        stop();
     }
 
     protected static class Packet {

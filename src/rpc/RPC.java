@@ -410,7 +410,10 @@ public class RPC implements RemoteInput, Closeable {
     }
 
     @Override
-    public void close() {
+    public void close() throws IOException {
+        if (out != null) {
+            out.close();
+        }
         rpcRegistry.remove(this);
         synchronized (listeners) {
             for (RPCListener listener : listeners) {
@@ -498,7 +501,7 @@ public class RPC implements RemoteInput, Closeable {
 
     protected Object genericSend(boolean isRespond, int requestTypeId, int requestId, Object[] args, boolean respond, boolean blocking)
             throws IOException, UnsupportedDataTypeException, InvocationFailedException {
-        byte[] packetData = packetizer.generatePacket(isRespond, requestTypeId, requestId, args);
+        byte[] packetData = packetizer.pack(isRespond, requestTypeId, requestId, args);
         return genericSend(packetData, requestId, respond, blocking);
     }
 
@@ -647,7 +650,7 @@ public class RPC implements RemoteInput, Closeable {
 
     @Override
     public void feed(byte[] b, int offset, int length) {
-        depacketizer.feed(b, offset, length);
+        depacketizer.unpack(b, offset, length);
     }
 
     protected static class RPCIdSet {
