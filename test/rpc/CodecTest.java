@@ -121,7 +121,7 @@ public class CodecTest {
                 + " !\"#$%&'()*+,-./0123456789:;<=>?"/*32*/
                 + "@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_"/*32*/
                 + "`abcdefghijklmnopqrstuvwxyz{|}~"/*31*/;
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder(byteLength);
 
         int stringLength = selection.length();
 

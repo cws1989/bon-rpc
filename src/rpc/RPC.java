@@ -239,6 +239,8 @@ public class RPC implements RemoteInput, Closeable {
 
             @Override
             public void packetReceived(Packet packet) {
+                lastPacketReceiveTime = System.currentTimeMillis();
+
                 boolean isRespond = packet.isRespond();
                 int requestTypeId = packet.getRequestTypeId();
                 int requestId = packet.getRequestId();
@@ -263,61 +265,64 @@ public class RPC implements RemoteInput, Closeable {
                     }
 
                     RPCRequest request = _requestList.get(requestId);
-                    if (request != null) {
-                        if (contentList.size() != 1) {
-                            if (contentList.size() == 2
-                                    && contentList.get(0) == null && contentList.get(1) instanceof Short) {
-                                RPCError rpcError = RPCError.getRPCError((Short) contentList.get(1));
-                                if (rpcError == null) {
-                                    LOG.log(Level.SEVERE, String.format("error code not found, code: %1$d", (Short) contentList.get(1)));
-                                    return;
-                                }
-                                switch (rpcError) {
-                                    case REMOTE_CONNECTION_METHOD_NOT_REGISTERED:
-                                        LOG.log(Level.SEVERE, "method not registered by remote connection");
-                                        break;
-                                    case REMOTE_CONNECTION_METHOD_INSTANCE_NOT_REGISTERED:
-                                        LOG.log(Level.SEVERE, "instance not binded by remote connection");
-                                        break;
-                                    case REMOTE_CONNECTION_SEQUENTIAL_ID_NOT_REGISTERED:
-                                        LOG.log(Level.SEVERE, "sequential id not registered by remote connection");
-                                        break;
-                                    case REMOTE_METHOD_INVOKE_ERROR:
-                                        LOG.log(Level.SEVERE, "error occurred when remote connection invoking method");
-                                        break;
-                                    case RESPOND_ID_UPDATE_FAILED:
-                                        LOG.log(Level.SEVERE, "respond id update failed");
-                                        break;
-                                }
-                            } else {
-                                LOG.log(Level.SEVERE, "size of the respond list is incorrect");
+                    if (request == null) {
+                        return;
+                    }
+
+                    if (contentList.size() != 1) {
+                        if (contentList.size() == 2
+                                && contentList.get(0) == null && contentList.get(1) instanceof Short) {
+                            RPCError rpcError = RPCError.getRPCError((Short) contentList.get(1));
+                            if (rpcError == null) {
+                                LOG.log(Level.SEVERE, String.format("error code not found, code: %1$d", (Short) contentList.get(1)));
                                 return;
                             }
+                            switch (rpcError) {
+                                case REMOTE_CONNECTION_METHOD_NOT_REGISTERED:
+                                    LOG.log(Level.SEVERE, "method not registered by remote connection");
+                                    break;
+                                case REMOTE_CONNECTION_METHOD_INSTANCE_NOT_REGISTERED:
+                                    LOG.log(Level.SEVERE, "instance not binded by remote connection");
+                                    break;
+                                case REMOTE_CONNECTION_SEQUENTIAL_ID_NOT_REGISTERED:
+                                    LOG.log(Level.SEVERE, "sequential id not registered by remote connection");
+                                    break;
+                                case REMOTE_METHOD_INVOKE_ERROR:
+                                    LOG.log(Level.SEVERE, "error occurred when remote connection invoking method");
+                                    break;
+                                case RESPOND_ID_UPDATE_FAILED:
+                                    LOG.log(Level.SEVERE, "respond id update failed");
+                                    break;
+                            }
+                            request.requestFailed = true;
+                        } else {
+                            LOG.log(Level.SEVERE, "size of the respond list is incorrect");
+                            return;
                         }
-                        request.respond = contentList.get(0);
-                        request.responded = true;
-                        synchronized (request) {
-                            request.notifyAll();
-                        }
+                    }
+                    request.respond = contentList.get(0);
+                    request.responded = true;
+                    synchronized (request) {
+                        request.notifyAll();
+                    }
 
-                        synchronized (_idSet) {
-                            if (requestId == _idSet.respondedId) {
-                                _requestList.remove(requestId);
+                    synchronized (_idSet) {
+                        if (requestId == _idSet.respondedId) {
+                            _requestList.remove(requestId);
+                            _idSet.respondedId++;
+                            if (_idSet.respondedId > 1073741823) {
+                                _idSet.respondedId = 1;
+                            }
+
+                            RPCRequest _request = null;
+                            while ((_request = _requestList.get(_idSet.respondedId)) != null) {
+                                if (!_request.responded) {
+                                    break;
+                                }
+                                _requestList.remove(_idSet.respondedId);
                                 _idSet.respondedId++;
                                 if (_idSet.respondedId > 1073741823) {
                                     _idSet.respondedId = 1;
-                                }
-
-                                RPCRequest _request = null;
-                                while ((_request = _requestList.get(_idSet.respondedId)) != null) {
-                                    if (!_request.responded) {
-                                        break;
-                                    }
-                                    _requestList.remove(_idSet.respondedId);
-                                    _idSet.respondedId++;
-                                    if (_idSet.respondedId > 1073741823) {
-                                        _idSet.respondedId = 1;
-                                    }
                                 }
                             }
                         }
@@ -333,8 +338,6 @@ public class RPC implements RemoteInput, Closeable {
                         return;
                     }
 
-                    Object respond = null;
-
                     RPCIdSet _idSet = sequentialRespondIdSet[requestTypeId];
                     Map<Integer, RPCRequest> _respondList = sequentialRespondList[requestTypeId];
                     if (_respondList != null) {
@@ -344,51 +347,83 @@ public class RPC implements RemoteInput, Closeable {
                                 if (_idSet.id > 1073741823) {
                                     _idSet.id = 1;
                                 }
-                                respond = invoke(requestTypeId, contentList.toArray());
 
-                                RPCRequest rpcRequest;
-                                while ((rpcRequest = _respondList.remove(_idSet.id + 1)) != null) {
+                                Object respond = invoke(requestTypeId, contentList.toArray());
+
+                                RPCRequest rpcRequest = new RPCRequest(requestTypeId, requestId, System.currentTimeMillis(), null, respond);
+                                rpcRequest.responded = true;
+                                _respondList.put(requestId, rpcRequest);
+
+                                if (!method.noRespond) {
+                                    try {
+                                        respond(requestId, requestTypeId, respond);
+                                    } catch (Exception ex) {
+                                        LOG.log(Level.SEVERE, null, ex);
+                                    }
+                                }
+
+                                RPCRequest _rpcRequest;
+                                while ((_rpcRequest = _respondList.remove(_idSet.id)) != null) {
                                     _idSet.id++;
                                     if (_idSet.id > 1073741823) {
                                         _idSet.id = 1;
                                     }
-                                    Object requestRespond = invoke(requestTypeId, ((List<Object>) rpcRequest.requestArgs).toArray());
+
+                                    respond = invoke(requestTypeId, ((List<Object>) _rpcRequest.requestArgs).toArray());
+
+                                    _rpcRequest.respond = respond;
+                                    _rpcRequest.responded = true;
+
                                     if (!method.noRespond) {
                                         try {
-                                            respond(rpcRequest.requestId, rpcRequest.requestTypeId, requestRespond);
+                                            respond(_rpcRequest.requestId, _rpcRequest.requestTypeId, respond);
                                         } catch (Exception ex) {
                                             LOG.log(Level.SEVERE, null, ex);
                                         }
                                     }
                                 }
                             } else {
-                                _respondList.put(requestId, new RPCRequest(requestTypeId, requestId, System.currentTimeMillis(), content, null));
+                                RPCRequest rpcRequest = _respondList.get(requestId);
+                                if (rpcRequest == null) {
+                                    _respondList.put(requestId, new RPCRequest(requestTypeId, requestId, System.currentTimeMillis(), content, null));
+                                } else {
+                                    if (rpcRequest.responded && !method.noRespond) {
+                                        try {
+                                            respond(rpcRequest.requestId, rpcRequest.requestTypeId, rpcRequest.respond);
+                                        } catch (Exception ex) {
+                                            LOG.log(Level.SEVERE, null, ex);
+                                        }
+                                    }
+                                }
                             }
                         }
                     } else {
+                        Object respond = null;
+
                         _idSet = respondIdSet;
                         _respondList = respondList;
                         synchronized (_idSet) {
                             RPCRequest rpcRequest = _respondList.get(requestId);
                             if (rpcRequest == null) {
                                 respond = invoke(requestTypeId, contentList.toArray());
-                                _respondList.put(requestId, new RPCRequest(requestTypeId, requestId, System.currentTimeMillis(), null, respond));
+
+                                rpcRequest = new RPCRequest(requestTypeId, requestId, System.currentTimeMillis(), null, respond);
+                                rpcRequest.responded = true;
+                                _respondList.put(requestId, rpcRequest);
                             } else {
                                 respond = rpcRequest.respond;
                             }
                         }
-                    }
 
-                    if (!method.noRespond) {
-                        try {
-                            respond(requestId, requestTypeId, respond);
-                        } catch (Exception ex) {
-                            LOG.log(Level.SEVERE, null, ex);
+                        if (!method.noRespond) {
+                            try {
+                                respond(requestId, requestTypeId, respond);
+                            } catch (Exception ex) {
+                                LOG.log(Level.SEVERE, null, ex);
+                            }
                         }
                     }
                 }
-
-                lastPacketReceiveTime = System.currentTimeMillis();
             }
         });
         //</editor-fold>
@@ -431,10 +466,12 @@ public class RPC implements RemoteInput, Closeable {
             }
         }
         for (Map<Integer, RPCRequest> _requestList : requestListList) {
-            for (RPCRequest _request : _requestList.values()) {
-                if (!_request.responded) {
-                    synchronized (_request) {
-                        _request.notifyAll();
+            synchronized (_requestList) {
+                for (RPCRequest _request : _requestList.values()) {
+                    if (!_request.responded) {
+                        synchronized (_request) {
+                            _request.notifyAll();
+                        }
                     }
                 }
             }
@@ -468,6 +505,21 @@ public class RPC implements RemoteInput, Closeable {
 
     protected Object send(int requestTypeId, Object[] args, boolean respond, boolean blocking, boolean broadcast)
             throws IOException, UnsupportedDataTypeException, InvocationFailedException {
+        if (broadcast) {
+            int broadcastListIndex = args[0] instanceof Object[] ? 0 : 1;
+            Object[] broadcastList = (Object[]) args[broadcastListIndex];
+            args[broadcastListIndex] = null;
+
+            for (Object _userObject : broadcastList) {
+                RPC _rpc = rpcRegistry.get(_userObject);
+                if (_rpc == null) {
+                    continue;
+                }
+                _rpc.send(requestTypeId, args, respond, false, false);
+            }
+            return null;
+        }
+
         int requestId = 0;
         Map<Integer, RPCRequest> _requestList = null;
         if (respond) {
@@ -490,21 +542,6 @@ public class RPC implements RemoteInput, Closeable {
                     }
                 }
             }
-        }
-
-        if (broadcast) {
-            int broadcastListIndex = args[0] instanceof Object[] ? 0 : 1;
-            Object[] broadcastList = (Object[]) args[broadcastListIndex];
-            args[broadcastListIndex] = null;
-
-            for (Object _userObject : broadcastList) {
-                RPC _rpc = rpcRegistry.get(_userObject);
-                if (_rpc == null) {
-                    continue;
-                }
-                _rpc.send(requestTypeId, args, respond, false, false);
-            }
-            return null;
         }
 
         return genericSend(_requestList, false, requestTypeId, requestId, args, respond, blocking);
@@ -553,6 +590,9 @@ public class RPC implements RemoteInput, Closeable {
                 if (!request.responded) {
                     throw new IOException("Connection closed");
                 }
+                if (request.requestFailed) {
+                    throw new IOException("Request failed due to unsynchronized class registration on local and remote connection");
+                }
                 if (request.respond instanceof List) {
                     throw new InvocationFailedException("Remote method invoke failed");
                 }
@@ -571,17 +611,17 @@ public class RPC implements RemoteInput, Closeable {
                 int _targetRespondedId = (Integer) args[1];
 
                 if (_targetSequenceId >= _sequentialRespondIdSet.length) {
-                    return Arrays.asList(new Object[]{null, RPCError.REMOTE_CONNECTION_METHOD_NOT_REGISTERED.getValue()});
+                    return new Object[]{null, RPCError.REMOTE_CONNECTION_SEQUENTIAL_ID_NOT_REGISTERED.getValue()};
                 }
 
                 RPCIdSet _idSet = _sequentialRespondIdSet[_targetSequenceId];
                 Map<Integer, RPCRequest> _respondList = _sequentialRespondList[_targetSequenceId];
                 if (_idSet == null) {
-                    return Arrays.asList(new Object[]{null, RPCError.REMOTE_CONNECTION_SEQUENTIAL_ID_NOT_REGISTERED.getValue()});
+                    return new Object[]{null, RPCError.REMOTE_CONNECTION_SEQUENTIAL_ID_NOT_REGISTERED.getValue()};
                 }
 
                 if (_targetRespondedId < _idSet.respondedId) {
-                    return Arrays.asList(new Object[]{null, RPCError.RESPOND_ID_UPDATE_FAILED.getValue()});
+                    return new Object[]{null, RPCError.RESPOND_ID_UPDATE_FAILED.getValue()};
                 }
                 for (int i = _idSet.respondedId; i <= _targetRespondedId; i++) {
                     _respondList.remove(i);
@@ -592,7 +632,7 @@ public class RPC implements RemoteInput, Closeable {
                 int _targetRespondedId = (Integer) args[0];
 
                 if (_targetRespondedId < respondIdSet.respondedId) {
-                    return Arrays.asList(new Object[]{null, RPCError.RESPOND_ID_UPDATE_FAILED.getValue()});
+                    return new Object[]{null, RPCError.RESPOND_ID_UPDATE_FAILED.getValue()};
                 }
                 for (int i = respondIdSet.respondedId; i <= _targetRespondedId; i++) {
                     respondList.remove(i);
@@ -609,18 +649,18 @@ public class RPC implements RemoteInput, Closeable {
 
         if (requestTypeId > localMethodMap.length) {
             LOG.log(Level.SEVERE, "requestTypeId {0} greater than array size {1}", new Object[]{requestTypeId, localMethodMap.length});
-            return Arrays.asList(new Object[]{null, RPCError.REMOTE_CONNECTION_METHOD_NOT_REGISTERED.getValue()});
+            return new Object[]{null, RPCError.REMOTE_CONNECTION_METHOD_NOT_REGISTERED.getValue()};
         }
 
         RPCRegistryMethod method = localMethodMap[requestTypeId];
         if (method == null) {
             LOG.log(Level.SEVERE, "method with requestTypeId {0} not found", new Object[]{requestTypeId});
-            return Arrays.asList(new Object[]{null, RPCError.REMOTE_CONNECTION_METHOD_NOT_REGISTERED.getValue()});
+            return new Object[]{null, RPCError.REMOTE_CONNECTION_METHOD_NOT_REGISTERED.getValue()};
         }
 
         if (method.instance == null) {
             LOG.log(Level.SEVERE, "instance with requestTypeId {0} not found", new Object[]{requestTypeId});
-            return Arrays.asList(new Object[]{null, RPCError.REMOTE_CONNECTION_METHOD_INSTANCE_NOT_REGISTERED.getValue()});
+            return new Object[]{null, RPCError.REMOTE_CONNECTION_METHOD_INSTANCE_NOT_REGISTERED.getValue()};
         }
 
         if (method.userObject) {
@@ -634,7 +674,7 @@ public class RPC implements RemoteInput, Closeable {
             returnObject = method.method.invoke(method.instance, args);
         } catch (Exception ex) {
             LOG.log(Level.SEVERE, null, ex);
-            return Arrays.asList(new Object[]{null, RPCError.REMOTE_METHOD_INVOKE_ERROR.getValue()});
+            return new Object[]{null, RPCError.REMOTE_METHOD_INVOKE_ERROR.getValue()};
         }
 
         return returnObject;
@@ -706,6 +746,7 @@ public class RPC implements RemoteInput, Closeable {
         protected Object requestArgs;
         protected Object respond;
         protected boolean responded;
+        protected boolean requestFailed;
 
         protected RPCRequest(int requestId, long time, byte[] packetData) {
             this(0, requestId, time, packetData, null, null);
@@ -723,6 +764,7 @@ public class RPC implements RemoteInput, Closeable {
             this.requestArgs = requestArgs;
             this.respond = respond;
             responded = false;
+            requestFailed = false;
         }
     }
 }
