@@ -78,6 +78,14 @@ public class RPCTest {
 
     @Test
     public void test() throws Throwable {
+//- register class
+//- bind instance
+//- condition conflict
+//
+//- heart beat
+//- resend/retry packet
+//- regular send respondedId and remove requests from requestList (and for sequential also)
+//- annotations
         ServerInterface serverInterfaceImplementation = new ServerInterfaceImplementation() {
 
             @Override
