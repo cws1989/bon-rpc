@@ -61,6 +61,19 @@ public class PacketizerTest {
         DefaultPacketizer packetizer = new DefaultPacketizer();
         final AtomicBoolean packetReceived = new AtomicBoolean(false);
 
+        DepacketizerListener depacketizerListener = new DepacketizerListener() {
+
+            @Override
+            public void packetReceived(Packet packet) {
+                packetReceived.set(true);
+                assertEquals(isRespond, packet.isRespond());
+                assertEquals(requestTypeId, packet.getRequestTypeId());
+                assertEquals(requestId, packet.getRequestId());
+                assertTrue(ArgumentsAssert.assertEquals(args, ((List<Object>) packet.getContent()).toArray()));
+            }
+        };
+        byte[] buffer = new byte[17];
+
         for (boolean _isRespond : isRespondList) {
             isRespond = _isRespond;
             for (int _requestTypeId : requestTypeIdList) {
@@ -71,22 +84,29 @@ public class PacketizerTest {
                         Object[] _args = new Object[]{CodecTest.generateByte(Math.max(_contentLength - 4, 0))};
                         args = _args;
 
+                        byte[] packetByte = packetizer.pack(_isRespond, _requestTypeId, _requestId, Arrays.asList(_args));
+                        int packetByteLength = packetByte.length;
+
                         packetReceived.set(false);
                         DefaultDepacketizer depacketizer = new DefaultDepacketizer();
-                        depacketizer.addListener(new DepacketizerListener() {
-
-                            @Override
-                            public void packetReceived(Packet packet) {
-                                packetReceived.set(true);
-                                assertEquals(isRespond, packet.isRespond());
-                                assertEquals(requestTypeId, packet.getRequestTypeId());
-                                assertEquals(requestId, packet.getRequestId());
-                                assertTrue(ArgumentsAssert.assertEquals(args, ((List<Object>) packet.getContent()).toArray()));
-                            }
-                        });
-                        byte[] packetByte = packetizer.pack(_isRespond, _requestTypeId, _requestId, Arrays.asList(_args));
+                        depacketizer.addListener(depacketizerListener);
                         depacketizer.unpack(packetByte, 0, packetByte.length);
                         assertTrue(packetReceived.get());
+
+                        for (int segmentLength : Arrays.asList(new Integer[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 16, 17})) {
+                            if (segmentLength > packetByteLength) {
+                                continue;
+                            }
+                            packetReceived.set(false);
+                            depacketizer = new DefaultDepacketizer();
+                            depacketizer.addListener(depacketizerListener);
+                            for (int i = 0, iEnd = packetByteLength; i < iEnd; i += segmentLength) {
+                                int remaining = i + segmentLength > packetByteLength ? packetByteLength - i : segmentLength;
+                                System.arraycopy(packetByte, i, buffer, 0, remaining);
+                                depacketizer.unpack(buffer, 0, remaining);
+                            }
+                            assertTrue(packetReceived.get());
+                        }
                     }
                 }
             }

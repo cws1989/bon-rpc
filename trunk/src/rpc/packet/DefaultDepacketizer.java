@@ -347,7 +347,7 @@ public class DefaultDepacketizer extends Depacketizer {
         if (maxLength < byteToRead) {
             byteToRead = maxLength;
         }
-        if (byteToRead == 0) {
+        if (byteToRead <= 0) {
             return start;
         }
         System.arraycopy(b, start, _packetLengthBuffer, _packetLengthBufferRead, byteToRead);
@@ -364,7 +364,7 @@ public class DefaultDepacketizer extends Depacketizer {
         if (maxLength < byteToRead) {
             byteToRead = maxLength;
         }
-        if (byteToRead == 0) {
+        if (byteToRead <= 0) {
             return start;
         }
         System.arraycopy(b, start, _infoBuffer, _infoBufferRead, byteToRead);
@@ -385,7 +385,7 @@ public class DefaultDepacketizer extends Depacketizer {
         if (maxLength < byteToRead) {
             byteToRead = maxLength;
         }
-        if (byteToRead == 0) {
+        if (byteToRead <= 0) {
             return start;
         }
         System.arraycopy(b, start, _content, _contentRead, byteToRead);
@@ -402,7 +402,7 @@ public class DefaultDepacketizer extends Depacketizer {
         if (maxLength < byteToRead) {
             byteToRead = maxLength;
         }
-        if (byteToRead == 0) {
+        if (byteToRead <= 0) {
             return start;
         }
         System.arraycopy(b, start, _crcBuffer, _crcBufferRead, byteToRead);
