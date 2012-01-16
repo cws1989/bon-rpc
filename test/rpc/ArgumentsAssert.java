@@ -33,6 +33,54 @@ public class ArgumentsAssert {
         assertionDataMap.clear();
     }
 
+    public static boolean assertAnyMatch(Object key, Object... assertionData) {
+        boolean matchResult = false;
+
+        do {
+            AssertionDataContainer _assertionDataContainer = null;
+            if ((_assertionDataContainer = assertionDataMap.get(key)) == null) {
+                break;
+            }
+            synchronized (_assertionDataContainer) {
+                if (_assertionDataContainer.assertionData.length <= _assertionDataContainer.count) {
+                    break;
+                }
+
+                int matchIndex = -1;
+                for (int i = _assertionDataContainer.count, iEnd = _assertionDataContainer.assertionData.length; i < iEnd; i++) {
+                    Object[] _assertionData = _assertionDataContainer.assertionData[i];
+                    int matchCount = 0;
+                    for (int j = 0, jEnd = _assertionData.length; j < jEnd; j++) {
+                        if (assertEquals(_assertionData[j], assertionData[j])) {
+                            matchCount++;
+                        } else {
+                            break;
+                        }
+                    }
+                    if (matchCount == _assertionData.length) {
+                        matchIndex = i;
+                        matchResult = true;
+                        break;
+                    }
+                }
+
+                if (matchIndex != -1) {
+                    Object[][] newAssertionData = new Object[_assertionDataContainer.assertionData.length - 1][];
+                    System.arraycopy(_assertionDataContainer.assertionData, 0, newAssertionData, 0, matchIndex);
+                    if (matchIndex != _assertionDataContainer.assertionData.length - 1) {
+                        System.arraycopy(_assertionDataContainer.assertionData, matchIndex + 1, newAssertionData, matchIndex, _assertionDataContainer.assertionData.length - matchIndex - 1);
+                    }
+                }
+            }
+        } while (false);
+
+        if (!matchResult) {
+            LOG.log(Level.SEVERE, "assert any match failed", new Exception());
+        }
+
+        return true;
+    }
+
     public static boolean assertMatch(Object key, Object... assertionData) {
         boolean matchResult = false;
 
@@ -61,7 +109,7 @@ public class ArgumentsAssert {
         } while (false);
 
         if (!matchResult) {
-            LOG.log(Level.SEVERE, "assert Match failed", new Exception());
+            LOG.log(Level.SEVERE, "assert match failed", new Exception());
         }
 
         return true;
