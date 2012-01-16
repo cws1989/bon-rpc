@@ -115,19 +115,19 @@ public class CodecTest {
         }
         return returnValue;
     }
+    public static final char[] selection = ("\t\r\n"/*3*/
+            + " !\"#$%&'()*+,-./0123456789:;<=>?"/*32*/
+            + "@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_"/*32*/
+            + "`abcdefghijklmnopqrstuvwxyz{|}~"/*31*/).toCharArray();
 
     public static String generateString(int byteLength) {
-        String selection = "\t\r\n"/*3*/
-                + " !\"#$%&'()*+,-./0123456789:;<=>?"/*32*/
-                + "@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_"/*32*/
-                + "`abcdefghijklmnopqrstuvwxyz{|}~"/*31*/;
         StringBuilder sb = new StringBuilder(byteLength);
 
-        int stringLength = selection.length();
+        int stringLength = selection.length;
 
         Random random = new Random();
         for (int i = 0; i < byteLength; i++) {
-            sb.append(selection.charAt(random.nextInt(stringLength)));
+            sb.append(selection[random.nextInt(stringLength)]);
         }
 
         return sb.toString();
