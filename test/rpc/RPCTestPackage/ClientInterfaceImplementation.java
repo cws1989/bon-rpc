@@ -6,6 +6,10 @@ package rpc.RPCTestPackage;
 public class ClientInterfaceImplementation implements ClientInterface {
 
     @Override
+    public void test() {
+    }
+
+    @Override
     public void notifyClient(Integer[] broadcastList) {
     }
 }

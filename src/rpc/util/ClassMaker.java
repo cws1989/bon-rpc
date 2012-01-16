@@ -42,7 +42,14 @@ public class ClassMaker {
         ClassPool pool = ClassPool.getDefault();
 
         // start make class
-        CtClass evalClass = pool.makeClass(rpcClass.getPackage().getName() + "." + objClass.getSimpleName());
+        String makeClassName = rpcClass.getPackage().getName() + "." + objClass.getSimpleName();
+        CtClass evalClass = null;
+        try {
+            evalClass = pool.get(makeClassName);
+            evalClass = pool.makeClass(makeClassName + System.nanoTime());
+        } catch (NotFoundException ex) {
+            evalClass = pool.makeClass(makeClassName);
+        }
         // add interfaces to class, first is the objClass, second is the ClassMakerRPCInterface
         evalClass.addInterface(pool.get(objClass.getName()));
         evalClass.addInterface(pool.get(ClassMakerRPCInterface.class.getName()));

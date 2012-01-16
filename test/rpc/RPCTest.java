@@ -1,9 +1,11 @@
 package rpc;
 
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -19,6 +21,8 @@ import rpc.RPCTestPackage.ClientInterface;
 import rpc.RPCTestPackage.ClientInterface2;
 import rpc.RPCTestPackage.ClientInterface2Implementation;
 import rpc.RPCTestPackage.ClientInterfaceImplementation;
+import rpc.exception.ClassRegisteredException;
+import rpc.exception.ConditionConflictException;
 
 public class RPCTest {
 
@@ -39,16 +43,10 @@ public class RPCTest {
     @BeforeClass
     public static void setUpClass() throws Exception {
         System.out.println("***** " + getClassName() + " *****");
-
-        Map<Integer, List<String>> map = new HashMap<Integer, List<String>>();
-        map.put(0, Arrays.asList(new String[]{"rpc test", "rpc", "test"}));
-        ArgumentsAssert.register("ljkihy", new Object[][]{new Object[]{10, map}, new Object[]{10, map}});
     }
 
     @AfterClass
     public static void tearDownClass() throws Exception {
-        ArgumentsAssert.finish();
-
         System.out.println("******************************\r\n");
     }
 
@@ -77,15 +75,137 @@ public class RPCTest {
     }
 
     @Test
+    public void conditionConflictTest() throws Throwable {
+        System.out.println("+++++ conditionConflictTest +++++");
+
+        RPCRegistry registry = null;
+        AtomicBoolean exceptionCaught = new AtomicBoolean(false);
+
+        exceptionCaught.set(false);
+        registry = null;
+        try {
+            registry = new RPCRegistry();
+            registry.registerLocal(ClientInterface.class);
+            registry.registerLocal(ClientInterface.class);
+        } catch (ClassRegisteredException ex) {
+            exceptionCaught.set(true);
+        } finally {
+            if (registry != null) {
+                registry.stop();
+            }
+        }
+        assertTrue(exceptionCaught.get());
+
+        for (int i = 1; i <= 14; i++) {
+            Class<?> testInterface = Class.forName(String.format("rpc.RPCTestPackage.ConditionConflictTest_Interface%1$d", i));
+            exceptionCaught.set(false);
+            registry = null;
+            try {
+                registry = new RPCRegistry();
+                registry.registerLocal(testInterface);
+            } catch (ConditionConflictException ex) {
+                exceptionCaught.set(true);
+            } finally {
+                if (registry != null) {
+                    registry.stop();
+                }
+            }
+            assertTrue(exceptionCaught.get());
+        }
+    }
+
+    @Test
+    public void registerClassTest() throws Throwable {
+        System.out.println("+++++ registerClassTest +++++");
+
+        AtomicBoolean exceptionCaught = new AtomicBoolean(false);
+
+        RPCRegistry _serverRPCRegistry = null;
+        RPCRegistry _clientRPCRegistry = null;
+        Simulator _serverToClientSimulator = null;
+        Simulator _clientToServerSimulator = null;
+        try {
+            _serverRPCRegistry = new RPCRegistry();
+            _clientRPCRegistry = new RPCRegistry();
+
+            _serverRPCRegistry.registerLocal(ServerInterface.class);
+            _serverRPCRegistry.registerRemote(ClientInterface.class);
+            RPC serverRPC = _serverRPCRegistry.getRPC();
+
+            _clientRPCRegistry.registerRemote(ServerInterface.class);
+            RPC clientRPC = _clientRPCRegistry.getRPC();
+
+
+            // direct the output to correct RPC
+            _serverToClientSimulator = new Simulator(serverRPC, clientRPC);
+            _clientToServerSimulator = new Simulator(clientRPC, serverRPC);
+            serverRPC.setRemoteOutput(_serverToClientSimulator);
+            clientRPC.setRemoteOutput(_clientToServerSimulator);
+
+
+            // get the remote object
+            ServerInterface serverInterface = clientRPC.getRemote(ServerInterface.class);
+            ClientInterface clientInterface = serverRPC.getRemote(ClientInterface.class);
+
+
+            assertNotNull(clientInterface);
+            assertTrue(clientInterface instanceof ClientInterface);
+
+            assertNull(serverRPC.getRemote(ServerInterface.class));
+            assertNull(serverRPC.getRemote(ClientInterface2.class));
+
+
+            TestSuite.suppressErrorOutput();
+
+            exceptionCaught.set(false);
+            try {
+                clientInterface.test();
+            } catch (IOException ex) {
+                // REMOTE_CONNECTION_METHOD_NOT_REGISTERED
+                exceptionCaught.set(true);
+            }
+            assertTrue(exceptionCaught.get());
+
+            exceptionCaught.set(false);
+            try {
+                serverInterface.test();
+            } catch (IOException ex) {
+                // REMOTE_CONNECTION_METHOD_INSTANCE_NOT_REGISTERED
+                exceptionCaught.set(true);
+            }
+            assertTrue(exceptionCaught.get());
+
+            TestSuite.restoreErrorOutput();
+        } finally {
+            if (_serverToClientSimulator != null) {
+                _serverToClientSimulator.stop();
+            }
+            if (_clientToServerSimulator != null) {
+                _clientToServerSimulator.stop();
+            }
+            if (_serverRPCRegistry != null) {
+                _serverRPCRegistry.stop();
+            }
+            if (_clientRPCRegistry != null) {
+                _clientRPCRegistry.stop();
+            }
+        }
+    }
+
+    @Test
     public void test() throws Throwable {
-//- register class
-//- bind instance
-//- condition conflict
-//
+        System.out.println("+++++ test +++++");
+
 //- heart beat
 //- resend/retry packet
 //- regular send respondedId and remove requests from requestList (and for sequential also)
 //- annotations
+
+        Map<Integer, List<String>> _resultMap = new HashMap<Integer, List<String>>();
+        _resultMap.put(0, Arrays.asList(new String[]{"rpc test", "rpc", "test"}));
+        ArgumentsAssert.register("ljkihy", new Object[][]{new Object[]{10, _resultMap}, new Object[]{10, _resultMap}});
+
+
         ServerInterface serverInterfaceImplementation = new ServerInterfaceImplementation() {
 
             @Override
@@ -138,6 +258,7 @@ public class RPCTest {
         serverInterface.eval();
         serverInterface2.abc();
 
-        assertTrue(true);
+
+        ArgumentsAssert.finish();
     }
 }

@@ -17,10 +17,8 @@
 package rpc;
 
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -35,9 +33,8 @@ import rpc.annotation.Blocking;
 import rpc.annotation.Broadcast;
 import rpc.annotation.NoRespond;
 import rpc.annotation.RequestTypeId;
+import rpc.annotation.Sequential;
 import rpc.annotation.UserObject;
-import rpc.codec.CodecFactory;
-import rpc.codec.exception.UnsupportedDataTypeException;
 import rpc.exception.ClassRegisteredException;
 import rpc.exception.ConditionConflictException;
 
@@ -253,8 +250,11 @@ public class RPCRegistry {
         Method[] methods = objectClass.getDeclaredMethods();
         for (Method method : methods) {
             RequestTypeId requestTypeIdAnnotation = method.getAnnotation(RequestTypeId.class);
-            if (requestTypeIdAnnotation == null || requestTypeIdAnnotation.value() <= 0) {
+            if (requestTypeIdAnnotation == null) {
                 throw new ConditionConflictException(String.format("'RequestTypeId' not found, class: %1$s, function: %2$s", objectClass.getName(), method.getName()));
+            }
+            if (requestTypeIdAnnotation.value() <= 0 || requestTypeIdAnnotation.value() > 16383) {
+                throw new ConditionConflictException(String.format("'RequestTypeId' should >= 1 and <= 16383, class: %1$s, function: %2$s", objectClass.getName(), method.getName()));
             }
 
             boolean blocking = false;
@@ -279,6 +279,13 @@ public class RPCRegistry {
             UserObject userObjectAnnotation = method.getAnnotation(UserObject.class);
             if (userObjectAnnotation != null) {
                 userObject = true;
+            }
+
+            Sequential sequentialAnnotation = method.getAnnotation(Sequential.class);
+            if (sequentialAnnotation != null) {
+                if (sequentialAnnotation.value() <= 0) {
+                    throw new ConditionConflictException(String.format("'Sequential' should >= 1, class: %1$s, function: %2$s", objectClass.getName(), method.getName()));
+                }
             }
 
 //1. Blocking
