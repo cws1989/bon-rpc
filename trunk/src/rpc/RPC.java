@@ -328,13 +328,14 @@ public class RPC implements RemoteInput, Closeable {
                         }
                     }
                 } else {
-                    if (requestTypeId >= sequentialRespondIdSet.length) {
-                        return;
-                    }
-
-                    RPCRegistryMethod method = localMethodMap[requestTypeId];
-                    if (method == null) {
+                    RPCRegistryMethod method = null;
+                    if (requestTypeId >= sequentialRespondIdSet.length || (method = localMethodMap[requestTypeId]) == null) {
                         LOG.log(Level.SEVERE, "method with requestTypeId {0} not found", new Object[]{requestTypeId});
+                        try {
+                            respond(requestId, requestTypeId, new Object[]{null, RPCError.REMOTE_CONNECTION_METHOD_NOT_REGISTERED.getValue()});
+                        } catch (Exception ex) {
+                            LOG.log(Level.SEVERE, null, ex);
+                        }
                         return;
                     }
 
@@ -348,7 +349,7 @@ public class RPC implements RemoteInput, Closeable {
                                     _idSet.id = 1;
                                 }
 
-                                Object respond = invoke(requestTypeId, contentList.toArray());
+                                Object[] respond = invoke(requestTypeId, contentList.toArray());
 
                                 RPCRequest rpcRequest = new RPCRequest(requestTypeId, requestId, System.currentTimeMillis(), null, respond);
                                 rpcRequest.responded = true;
@@ -389,7 +390,7 @@ public class RPC implements RemoteInput, Closeable {
                                 } else {
                                     if (rpcRequest.responded && !method.noRespond) {
                                         try {
-                                            respond(rpcRequest.requestId, rpcRequest.requestTypeId, rpcRequest.respond);
+                                            respond(rpcRequest.requestId, rpcRequest.requestTypeId, (Object[]) rpcRequest.respond);
                                         } catch (Exception ex) {
                                             LOG.log(Level.SEVERE, null, ex);
                                         }
@@ -417,7 +418,7 @@ public class RPC implements RemoteInput, Closeable {
 
                         if (!method.noRespond) {
                             try {
-                                respond(requestId, requestTypeId, respond);
+                                respond(requestId, requestTypeId, (Object[]) respond);
                             } catch (Exception ex) {
                                 LOG.log(Level.SEVERE, null, ex);
                             }
@@ -520,26 +521,23 @@ public class RPC implements RemoteInput, Closeable {
             return null;
         }
 
+        if (requestTypeId >= sequentialRequestIdSet.length) {
+            return null;
+        }
+
+        RPCIdSet _idSet = sequentialRequestIdSet[requestTypeId];
+        Map<Integer, RPCRequest> _requestList = sequentialRequestList[requestTypeId];
+        if (_requestList == null) {
+            _idSet = requestIdSet;
+            _requestList = requestList;
+        }
+
         int requestId = 0;
-        Map<Integer, RPCRequest> _requestList = null;
-        if (respond) {
-            if (requestTypeId >= sequentialRequestIdSet.length) {
-                return null;
-            }
-
-            RPCIdSet _idSet = sequentialRequestIdSet[requestTypeId];
-            _requestList = sequentialRequestList[requestTypeId];
-            if (_requestList == null) {
-                _idSet = requestIdSet;
-                _requestList = requestList;
-            }
-
-            synchronized (_idSet) {
-                while (requestId == 0 || _requestList.get(requestId) != null) {
-                    requestId = _idSet.id++;
-                    if (requestId > 1073741823) {
-                        _idSet.id = 1;
-                    }
+        synchronized (_idSet) {
+            while (requestId == 0 || _requestList.get(requestId) != null) {
+                requestId = _idSet.id++;
+                if (requestId > 1073741823) {
+                    _idSet.id = 1;
                 }
             }
         }
@@ -547,10 +545,10 @@ public class RPC implements RemoteInput, Closeable {
         return genericSend(_requestList, false, requestTypeId, requestId, args, respond, blocking);
     }
 
-    protected void respond(int requestId, int requestTypeId, Object respond)
+    protected void respond(int requestId, int requestTypeId, Object[] respond)
             throws IOException, UnsupportedDataTypeException {
         try {
-            genericSend(null, true, requestTypeId, requestId, new Object[]{respond}, false, false);
+            genericSend(null, true, requestTypeId, requestId, respond, false, false);
         } catch (InvocationFailedException ex) {
             LOG.log(Level.SEVERE, "Respond should not cause invocation failed exception", ex);
         }
@@ -603,7 +601,7 @@ public class RPC implements RemoteInput, Closeable {
         }
     }
 
-    protected Object invoke(int requestTypeId, Object[] args) {
+    protected Object[] invoke(int requestTypeId, Object[] args) {
         if (requestTypeId == 0) {
             if (args.length == 2 && args[0] instanceof Integer && args[1] instanceof Integer) {
                 // respondId notification
@@ -642,10 +640,10 @@ public class RPC implements RemoteInput, Closeable {
                 // heart beat: args.length == 1 && args[0] == null
             }
 
-            return null;
+            return new Object[]{null};
         }
 
-        Object returnObject = null;
+        Object[] returnObject = new Object[0];
 
         if (requestTypeId > localMethodMap.length) {
             LOG.log(Level.SEVERE, "requestTypeId {0} greater than array size {1}", new Object[]{requestTypeId, localMethodMap.length});
@@ -671,7 +669,7 @@ public class RPC implements RemoteInput, Closeable {
         }
 
         try {
-            returnObject = method.method.invoke(method.instance, args);
+            returnObject = new Object[]{method.method.invoke(method.instance, args)};
         } catch (Exception ex) {
             LOG.log(Level.SEVERE, null, ex);
             return new Object[]{null, RPCError.REMOTE_METHOD_INVOKE_ERROR.getValue()};

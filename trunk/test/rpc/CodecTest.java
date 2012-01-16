@@ -47,6 +47,8 @@ public class CodecTest {
 
     @Test
     public void test() throws Throwable {
+        System.out.println("+++++ test +++++");
+
         List<Object> objectList = new ArrayList<Object>();
         // Short
         objectList.addAll(Arrays.asList(new Object[]{

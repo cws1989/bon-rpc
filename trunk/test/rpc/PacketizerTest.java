@@ -51,6 +51,8 @@ public class PacketizerTest {
 
     @Test
     public void test() throws Throwable {
+        System.out.println("+++++ test +++++");
+
         boolean[] isRespondList = new boolean[]{true, false};
         int[] requestTypeIdList = new int[]{0, 1, 63, 64, 16383};
         int[] requestIdList = new int[]{1, 32767, 32768,

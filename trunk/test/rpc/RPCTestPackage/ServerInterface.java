@@ -8,6 +8,10 @@ import rpc.annotation.UserObject;
 
 public interface ServerInterface {
 
+    @RequestTypeId(1)
+    @Blocking()
+    void test() throws java.io.IOException;
+
     @Blocking()
     @UserObject()
     @RequestTypeId(4)
@@ -22,6 +26,6 @@ public interface ServerInterface {
     Double eval(double x);
 
     @Blocking()
-    @RequestTypeId(1)
+    @RequestTypeId(7)
     void eval();
 }

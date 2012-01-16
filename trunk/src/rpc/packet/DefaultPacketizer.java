@@ -16,8 +16,6 @@
 // along with BON RPC.  If not, see <http://www.gnu.org/licenses/>.
 package rpc.packet;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.zip.CRC32;
 import rpc.codec.CodecFactory;
 import rpc.codec.exception.UnsupportedDataTypeException;
@@ -53,26 +51,24 @@ public class DefaultPacketizer implements Packetizer {
             sendBuffer[sendBufferIndex++] = (byte) requestTypeId;
         }
 
-        if (requestId != 0) {
-            if (requestId <= 32767) {
-                sendBuffer[sendBufferIndex++] = (byte) (requestId >> 8);
-                // first bit is 0
-                sendBuffer[sendBufferIndex++] = (byte) requestId;
-            } else if (requestId <= 4194303) {
-                sendBuffer[sendBufferIndex] = (byte) (requestId >> 16);
-                sendBuffer[sendBufferIndex++] |= 128;
-                // first bit is 1, second bit is 0
-                sendBuffer[sendBufferIndex++] = (byte) (requestId >> 8);
-                sendBuffer[sendBufferIndex++] = (byte) requestId;
-            } else {
-                // max: 1073741823
-                sendBuffer[sendBufferIndex] = (byte) (requestId >> 24);
-                sendBuffer[sendBufferIndex++] |= 192;
-                // first bit is 1, second bit is 1
-                sendBuffer[sendBufferIndex++] = (byte) (requestId >> 16);
-                sendBuffer[sendBufferIndex++] = (byte) (requestId >> 8);
-                sendBuffer[sendBufferIndex++] = (byte) requestId;
-            }
+        if (requestId <= 32767) {
+            sendBuffer[sendBufferIndex++] = (byte) (requestId >> 8);
+            // first bit is 0
+            sendBuffer[sendBufferIndex++] = (byte) requestId;
+        } else if (requestId <= 4194303) {
+            sendBuffer[sendBufferIndex] = (byte) (requestId >> 16);
+            sendBuffer[sendBufferIndex++] |= 128;
+            // first bit is 1, second bit is 0
+            sendBuffer[sendBufferIndex++] = (byte) (requestId >> 8);
+            sendBuffer[sendBufferIndex++] = (byte) requestId;
+        } else {
+            // max: 1073741823
+            sendBuffer[sendBufferIndex] = (byte) (requestId >> 24);
+            sendBuffer[sendBufferIndex++] |= 192;
+            // first bit is 1, second bit is 1
+            sendBuffer[sendBufferIndex++] = (byte) (requestId >> 16);
+            sendBuffer[sendBufferIndex++] = (byte) (requestId >> 8);
+            sendBuffer[sendBufferIndex++] = (byte) requestId;
         }
         //</editor-fold>
 

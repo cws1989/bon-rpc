@@ -9,6 +9,10 @@ import java.util.Map;
 public class ServerInterfaceImplementation implements ServerInterface {
 
     @Override
+    public void test() {
+    }
+
+    @Override
     public Double ljkihy(int userObject, Map<Integer, List<String>> test) {
         return null;
     }

@@ -29,6 +29,10 @@ public class ArgumentsAssert {
         return true;
     }
 
+    public static void clear() {
+        assertionDataMap.clear();
+    }
+
     public static boolean assertMatch(Object key, Object... assertionData) {
         boolean matchResult = false;
 
