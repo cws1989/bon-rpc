@@ -13,7 +13,7 @@ public class ServerInterfaceImplementation implements ServerInterface {
     }
 
     @Override
-    public Double ljkihy(int userObject, Map<Integer, List<String>> test) {
+    public Double ljkihy(Integer userObject, Map<Integer, List<String>> test) {
         return null;
     }
 

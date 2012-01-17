@@ -15,7 +15,7 @@ public interface ServerInterface {
     @Blocking()
     @UserObject()
     @RequestTypeId(4)
-    Double ljkihy(int userObject, Map<Integer, List<String>> test);
+    Double ljkihy(Integer userObject, Map<Integer, List<String>> test);
 
     @Blocking()
     @RequestTypeId(5)
