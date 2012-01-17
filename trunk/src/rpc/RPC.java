@@ -47,11 +47,11 @@ import rpc.util.ClassMaker;
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
  */
-public class RPC implements RemoteInput, Closeable {
+public class RPC<T> implements RemoteInput, Closeable {
 
     private static final Logger LOG = Logger.getLogger(RPC.class.getName());
     //
-    protected final RPCRegistry rpcRegistry;
+    protected final RPCRegistry<T> rpcRegistry;
     //
     protected final List<RPCRegistryMethod> localMethodRegistry;
     protected final List<RPCRegistryMethod> remoteMethodRegistry;
@@ -81,12 +81,12 @@ public class RPC implements RemoteInput, Closeable {
     //
     protected final List<RPCListener> listeners;
     protected RemoteOutput out;
-    protected Object userObject;
+    protected T userObject;
     //
     protected final Packetizer packetizer;
     protected final Depacketizer depacketizer;
 
-    protected RPC(RPCRegistry rpcRegistry,
+    protected RPC(RPCRegistry<T> rpcRegistry,
             List<RPCRegistryMethod> localMethodRegistry, List<RPCRegistryMethod> remoteMethodRegistry,
             Map<Class<?>, Integer> registeredLocalClasses, Map<Class<?>, Integer> registeredRemoteClasses)
             throws NotFoundException, CannotCompileException, InstantiationException, IllegalAccessException {
@@ -487,7 +487,7 @@ public class RPC implements RemoteInput, Closeable {
         return out;
     }
 
-    public void setUserObject(Object userObject) {
+    public void setUserObject(T userObject) {
         if (userObject == null) {
             this.rpcRegistry.remove(this.userObject);
             this.userObject = userObject;
@@ -500,7 +500,7 @@ public class RPC implements RemoteInput, Closeable {
         }
     }
 
-    public Object getUserObject() {
+    public T getUserObject() {
         return userObject;
     }
 
@@ -512,7 +512,7 @@ public class RPC implements RemoteInput, Closeable {
             args[broadcastListIndex] = null;
 
             for (Object _userObject : broadcastList) {
-                RPC _rpc = rpcRegistry.get(_userObject);
+                RPC<T> _rpc = rpcRegistry.get(_userObject);
                 if (_rpc == null) {
                     continue;
                 }
@@ -678,11 +678,11 @@ public class RPC implements RemoteInput, Closeable {
         return returnObject;
     }
 
-    public <T> T getRemote(Class<T> objClass) {
+    public <R> R getRemote(Class<R> objClass) {
         return objClass.cast(remoteImplementations.get(objClass));
     }
 
-    public <T> void bind(Class<T> objectClass, T instance) {
+    public <L> void bind(Class<L> objectClass, L instance) {
         Integer methodRegistryIndex;
         if ((methodRegistryIndex = registeredLocalClasses.get(objectClass)) == null) {
             LOG.log(Level.SEVERE, "class {0} not registered", objectClass.getName());

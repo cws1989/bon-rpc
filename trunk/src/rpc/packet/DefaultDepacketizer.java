@@ -52,6 +52,22 @@ public class DefaultDepacketizer extends Depacketizer {
         parser = CodecFactory.getParser();
     }
 
+    protected void reset() {
+        packetStarted = false;
+        _headerRead = 0;
+        _packetLengthBufferRead = 0;
+        _infoBufferRead = 0;
+        _packetLength = -1;
+        _requestId = -1;
+        _isRespond = false;
+        _requestTypeId = -1;
+        _content = null;
+        _contentRead = 0;
+        _crcBufferRead = 0;
+        _crcMatched = false;
+        _crc32.reset();
+    }
+
     @Override
     public void unpack(byte[] b, int offset, int length) {
         int start = offset, end = offset + length;
@@ -64,21 +80,8 @@ public class DefaultDepacketizer extends Depacketizer {
                         if (b[start] == DefaultPacketizer.packetHeader[0]) {
                             _headerRead = 1;
                         } else if (_headerRead == 1 && b[start] == DefaultPacketizer.packetHeader[1]) {
+                            reset();
                             packetStarted = true;
-
-                            _headerRead = 0;
-                            _packetLengthBufferRead = 0;
-                            _infoBufferRead = 0;
-                            _packetLength = -1;
-                            _requestId = -1;
-                            _isRespond = false;
-                            _requestTypeId = -1;
-                            _content = null;
-                            _contentRead = 0;
-                            _crcBufferRead = 0;
-                            _crcMatched = false;
-                            _crc32.reset();
-
                             break;
                         } else {
                             _headerRead = 0;
@@ -306,29 +309,30 @@ public class DefaultDepacketizer extends Depacketizer {
     }
 
     protected void refeed() {
+        reset();
         do {
-            if (_packetLengthBufferRead > 0) {
+            if (_packetLengthBufferRead < 0) {
                 break;
             }
             byte[] __packetLengthBuffer = new byte[_packetLengthBufferRead];
             System.arraycopy(_packetLengthBuffer, 0, __packetLengthBuffer, 0, _packetLengthBufferRead);
             unpack(__packetLengthBuffer, 0, _packetLengthBufferRead);
 
-            if (_infoBufferRead > 0) {
+            if (_infoBufferRead < 0) {
                 break;
             }
             byte[] __infoBuffer = new byte[_infoBufferRead];
             System.arraycopy(_infoBuffer, 0, __infoBuffer, 0, _infoBufferRead);
             unpack(__infoBuffer, 0, _infoBufferRead);
 
-            if (_packetLength > 0) {
+            if (_packetLength < 0) {
                 break;
             }
             byte[] __content = new byte[_packetLength];
             System.arraycopy(_content, 0, __content, 0, _packetLength);
             unpack(__content, 0, _packetLength);
 
-            if (_crcBufferRead > 0) {
+            if (_crcBufferRead < 0) {
                 break;
             }
             byte[] __crcBuffer = new byte[_crcBufferRead];

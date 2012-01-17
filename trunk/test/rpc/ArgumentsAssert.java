@@ -70,6 +70,7 @@ public class ArgumentsAssert {
                     if (matchIndex != _assertionDataContainer.assertionData.length - 1) {
                         System.arraycopy(_assertionDataContainer.assertionData, matchIndex + 1, newAssertionData, matchIndex, _assertionDataContainer.assertionData.length - matchIndex - 1);
                     }
+                    _assertionDataContainer.assertionData = newAssertionData;
                 }
             }
         } while (false);
@@ -102,10 +103,12 @@ public class ArgumentsAssert {
                     if (!assertEquals(_assertionData[i], assertionData[i])) {
                         break;
                     }
+                    if (i == iEnd - 1) {
+                        matchResult = true;
+                        _assertionDataContainer.count++;
+                    }
                 }
-                _assertionDataContainer.count++;
             }
-            matchResult = true;
         } while (false);
 
         if (!matchResult) {
@@ -121,11 +124,8 @@ public class ArgumentsAssert {
         } else if (o1 == null && o2 == null) {
             return true;
         }
-        if (!o1.getClass().equals(o2.getClass())) {
-            return false;
-        }
-        if (o1.getClass().isArray()) {
-            if (o1 instanceof byte[]) {
+        if (o1.getClass().isArray() && o2.getClass().isArray()) {
+            if (o1 instanceof byte[] && o2 instanceof byte[]) {
                 byte[] o1Array = (byte[]) o1;
                 byte[] o2Array = (byte[]) o2;
 
@@ -152,7 +152,7 @@ public class ArgumentsAssert {
                     }
                 }
             }
-        } else if (o1 instanceof List) {
+        } else if (o1 instanceof List && o2 instanceof List) {
             List<Object> o1List = (List<Object>) o1;
             List<Object> o2List = (List<Object>) o2;
 
@@ -163,9 +163,9 @@ public class ArgumentsAssert {
             if (!assertEquals(o1List.toArray(), o2List.toArray())) {
                 return false;
             }
-        } else if (o1 instanceof Map) {
-            Map<Object, Object> o1Map = (Map<Object, Object>) o1;
-            Map<Object, Object> o2Map = (Map<Object, Object>) o2;
+        } else if (o1 instanceof Map && o2 instanceof Map) {
+            Map<Object, Object> o1Map = new HashMap<Object, Object>((Map<Object, Object>) o1);
+            Map<Object, Object> o2Map = new HashMap<Object, Object>((Map<Object, Object>) o2);
 
             if (o1Map.size() != o2Map.size()) {
                 return false;
@@ -183,15 +183,18 @@ public class ArgumentsAssert {
             if (!o1Map.isEmpty()) {
                 return false;
             }
-        } else {
+        } else if (!o1.getClass().isArray() && !o2.getClass().isArray()) {
             if (!o1.equals(o2)) {
                 return false;
             }
+        } else {
+            return false;
         }
         return true;
     }
 
-    public static void finish() {
+    public static boolean finish() {
+        boolean result = true;
         synchronized (assertionDataMap) {
             for (Object key : assertionDataMap.keySet()) {
                 AssertionDataContainer assertionDataContainer = assertionDataMap.get(key);
@@ -200,8 +203,10 @@ public class ArgumentsAssert {
                 }
                 LOG.log(Level.SEVERE, String.format("arguments assertion not consumed, key: %1$s, expected count: %2$d, current count: %3$d",
                         key.toString(), assertionDataContainer.assertionData.length, assertionDataContainer.count));
+                result = false;
             }
         }
+        return result;
     }
 
     protected static class AssertionDataContainer {

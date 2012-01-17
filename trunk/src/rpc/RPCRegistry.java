@@ -41,7 +41,7 @@ import rpc.exception.ConditionConflictException;
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
  */
-public class RPCRegistry {
+public class RPCRegistry<T> {
 
     private static final Logger LOG = Logger.getLogger(RPCRegistry.class.getName());
     protected final List<RPCRegistryMethod> localMethodRegistry;
@@ -51,8 +51,8 @@ public class RPCRegistry {
     //
     protected Runnable retryTask;
     protected Thread retryThread;
-    protected final List<RPC> rpcList;
-    protected final Map<Object, RPC> userObjectRPCMap;
+    protected final List<RPC<T>> rpcList;
+    protected final Map<Object, RPC<T>> userObjectRPCMap;
 
     public RPCRegistry() {
         localMethodRegistry = new ArrayList<RPCRegistryMethod>();
@@ -60,8 +60,8 @@ public class RPCRegistry {
         registeredLocalClasses = new HashMap<Class<?>, Integer>();
         registeredRemoteClasses = new HashMap<Class<?>, Integer>();
 
-        rpcList = Collections.synchronizedList(new ArrayList<RPC>());
-        userObjectRPCMap = Collections.synchronizedMap(new HashMap<Object, RPC>());
+        rpcList = Collections.synchronizedList(new ArrayList<RPC<T>>());
+        userObjectRPCMap = Collections.synchronizedMap(new HashMap<Object, RPC<T>>());
         retryTask = new Runnable() {
 
             @Override
@@ -79,12 +79,12 @@ public class RPCRegistry {
                     synchronized (RPCRegistry.this) {
                         long currentTime = System.currentTimeMillis();
 
-                        RPC[] rpcArray = null;
+                        RPC<T>[] rpcArray = null;
                         synchronized (rpcList) {
                             rpcArray = rpcList.toArray(new RPC[rpcList.size()]);
                         }
 
-                        for (RPC rpc : rpcArray) {
+                        for (RPC<T> rpc : rpcArray) {
                             if (rpc.out == null) {
                                 continue;
                             }
@@ -209,24 +209,24 @@ public class RPCRegistry {
         registeredRemoteClasses.clear();
     }
 
-    protected void put(Object userObject, RPC rpc) {
+    protected void put(Object userObject, RPC<T> rpc) {
         userObjectRPCMap.put(userObject, rpc);
     }
 
-    protected RPC remove(Object userObject) {
+    protected RPC<T> remove(Object userObject) {
         return userObjectRPCMap.remove(userObject);
     }
 
-    protected RPC get(Object userObject) {
+    protected RPC<T> get(Object userObject) {
         return userObjectRPCMap.get(userObject);
     }
 
-    protected void remove(RPC rpc) {
+    protected void remove(RPC<T> rpc) {
         rpcList.remove(rpc);
     }
 
-    public RPC getRPC() throws NotFoundException, CannotCompileException, InstantiationException, IllegalAccessException {
-        RPC rpc = new RPC(this, new ArrayList<RPCRegistryMethod>(localMethodRegistry), new ArrayList<RPCRegistryMethod>(remoteMethodRegistry),
+    public RPC<T> getRPC() throws NotFoundException, CannotCompileException, InstantiationException, IllegalAccessException {
+        RPC<T> rpc = new RPC<T>(this, new ArrayList<RPCRegistryMethod>(localMethodRegistry), new ArrayList<RPCRegistryMethod>(remoteMethodRegistry),
                 new HashMap<Class<?>, Integer>(registeredLocalClasses), new HashMap<Class<?>, Integer>(registeredRemoteClasses));
         rpcList.add(rpc);
         return rpc;
@@ -308,6 +308,8 @@ public class RPCRegistry {
 //6. UserObject
 //   - if Broadcast => second argument is an array
 //     else => first argument is an array
+
+            // check the class of the userObject and broadcast list argument
 
             if (broadcast && blocking) {
                 throw new ConditionConflictException(String.format("condition 'Broadcast' cannot use with 'Blocking', class: %1$s, function: %2$s", objectClass.getName(), method.getName()));
