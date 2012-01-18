@@ -27,8 +27,8 @@ import rpc.exception.ConditionConflictException;
 public class RPCTest {
 
     private static final Logger LOG = Logger.getLogger(RPCTest.class.getName());
-    protected RPCRegistry<Integer> serverRPCRegistry;
-    protected RPCRegistry<Integer> clientRPCRegistry;
+    protected RPCRegistry serverRPCRegistry;
+    protected RPCRegistry clientRPCRegistry;
     protected Simulator serverToClientSimulator;
     protected Simulator clientToServerSimulator;
 
@@ -52,8 +52,8 @@ public class RPCTest {
 
     @Before
     public void setUp() {
-        serverRPCRegistry = new RPCRegistry<Integer>();
-        clientRPCRegistry = new RPCRegistry<Integer>();
+        serverRPCRegistry = new RPCRegistry();
+        clientRPCRegistry = new RPCRegistry();
         serverToClientSimulator = null;
         clientToServerSimulator = null;
     }
@@ -78,13 +78,13 @@ public class RPCTest {
     public void conditionConflictTest() throws Throwable {
         System.out.println("+++++ conditionConflictTest +++++");
 
-        RPCRegistry<Integer> registry = null;
+        RPCRegistry registry = null;
         AtomicBoolean exceptionCaught = new AtomicBoolean(false);
 
         exceptionCaught.set(false);
         registry = null;
         try {
-            registry = new RPCRegistry<Integer>();
+            registry = new RPCRegistry();
             registry.registerLocal(ClientInterface.class);
             registry.registerLocal(ClientInterface.class);
         } catch (ClassRegisteredException ex) {
@@ -101,7 +101,7 @@ public class RPCTest {
             exceptionCaught.set(false);
             registry = null;
             try {
-                registry = new RPCRegistry<Integer>();
+                registry = new RPCRegistry();
                 registry.registerLocal(testInterface);
             } catch (ConditionConflictException ex) {
                 exceptionCaught.set(true);
@@ -120,20 +120,20 @@ public class RPCTest {
 
         AtomicBoolean exceptionCaught = new AtomicBoolean(false);
 
-        RPCRegistry<Integer> _serverRPCRegistry = null;
-        RPCRegistry<Integer> _clientRPCRegistry = null;
+        RPCRegistry _serverRPCRegistry = null;
+        RPCRegistry _clientRPCRegistry = null;
         Simulator _serverToClientSimulator = null;
         Simulator _clientToServerSimulator = null;
         try {
-            _serverRPCRegistry = new RPCRegistry<Integer>();
-            _clientRPCRegistry = new RPCRegistry<Integer>();
+            _serverRPCRegistry = new RPCRegistry();
+            _clientRPCRegistry = new RPCRegistry();
 
             _serverRPCRegistry.registerLocal(ServerInterface.class);
             _serverRPCRegistry.registerRemote(ClientInterface.class);
-            RPC<Integer> serverRPC = _serverRPCRegistry.getRPC();
+            RPC<Integer> serverRPC = _serverRPCRegistry.getRPC(Integer.class);
 
             _clientRPCRegistry.registerRemote(ServerInterface.class);
-            RPC<Integer> clientRPC = _clientRPCRegistry.getRPC();
+            RPC<Integer> clientRPC = _clientRPCRegistry.getRPC(Integer.class);
 
 
             // direct the output to correct RPC
@@ -221,7 +221,7 @@ public class RPCTest {
         serverRPCRegistry.registerLocal(ServerInterface2.class);
         serverRPCRegistry.registerRemote(ClientInterface.class);
         serverRPCRegistry.registerRemote(ClientInterface2.class);
-        RPC<Integer> serverRPC = serverRPCRegistry.getRPC();
+        RPC<Integer> serverRPC = serverRPCRegistry.getRPC(Integer.class);
         serverRPC.bind(ServerInterface.class, serverInterfaceImplementation);
         serverRPC.bind(ServerInterface2.class, new ServerInterface2Implementation());
         serverRPC.setUserObject(10);
@@ -230,7 +230,7 @@ public class RPCTest {
         clientRPCRegistry.registerRemote(ServerInterface2.class);
         clientRPCRegistry.registerLocal(ClientInterface.class);
         clientRPCRegistry.registerLocal(ClientInterface2.class);
-        RPC<Integer> clientRPC = clientRPCRegistry.getRPC();
+        RPC<Integer> clientRPC = clientRPCRegistry.getRPC(Integer.class);
         clientRPC.bind(ClientInterface.class, new ClientInterfaceImplementation());
         clientRPC.bind(ClientInterface2.class, new ClientInterface2Implementation());
 
@@ -270,6 +270,11 @@ public class RPCTest {
         serverInterface.get(1);
         serverInterface.eval();
         serverInterface2.abc();
+        for (int i = 0; i < 10000; i++) {
+            List<Object> list = serverInterface.eval();
+            assertEquals(1, list.get(0));
+            assertEquals("eval", list.get(1));
+        }
 
 
         assertTrue(ArgumentsAssert.finish());

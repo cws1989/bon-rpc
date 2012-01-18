@@ -51,7 +51,7 @@ public class RPC<T> implements RemoteInput, Closeable {
 
     private static final Logger LOG = Logger.getLogger(RPC.class.getName());
     //
-    protected final RPCRegistry<T> rpcRegistry;
+    protected final RPCRegistry rpcRegistry;
     //
     protected final List<RPCRegistryMethod> localMethodRegistry;
     protected final List<RPCRegistryMethod> remoteMethodRegistry;
@@ -86,7 +86,7 @@ public class RPC<T> implements RemoteInput, Closeable {
     protected final Packetizer packetizer;
     protected final Depacketizer depacketizer;
 
-    protected RPC(RPCRegistry<T> rpcRegistry,
+    protected RPC(RPCRegistry rpcRegistry,
             List<RPCRegistryMethod> localMethodRegistry, List<RPCRegistryMethod> remoteMethodRegistry,
             Map<Class<?>, Integer> registeredLocalClasses, Map<Class<?>, Integer> registeredRemoteClasses)
             throws NotFoundException, CannotCompileException, InstantiationException, IllegalAccessException {
@@ -274,29 +274,29 @@ public class RPC<T> implements RemoteInput, Closeable {
                                 && contentList.get(0) == null && contentList.get(1) instanceof Short) {
                             RPCError rpcError = RPCError.getRPCError((Short) contentList.get(1));
                             if (rpcError == null) {
-                                LOG.log(Level.SEVERE, String.format("error code not found, code: %1$d", (Short) contentList.get(1)));
+                                LOG.log(Level.SEVERE, null, new Exception(String.format("error code not found, code: %1$d", (Short) contentList.get(1))));
                                 return;
                             }
                             switch (rpcError) {
                                 case REMOTE_CONNECTION_METHOD_NOT_REGISTERED:
-                                    LOG.log(Level.SEVERE, "method not registered by remote connection");
+                                    LOG.log(Level.SEVERE, null, new Exception("method not registered by remote connection"));
                                     break;
                                 case REMOTE_CONNECTION_METHOD_INSTANCE_NOT_REGISTERED:
-                                    LOG.log(Level.SEVERE, "instance not binded by remote connection");
+                                    LOG.log(Level.SEVERE, null, new Exception("instance not binded by remote connection"));
                                     break;
                                 case REMOTE_CONNECTION_SEQUENTIAL_ID_NOT_REGISTERED:
-                                    LOG.log(Level.SEVERE, "sequential id not registered by remote connection");
+                                    LOG.log(Level.SEVERE, null, new Exception("sequential id not registered by remote connection"));
                                     break;
                                 case REMOTE_METHOD_INVOKE_ERROR:
-                                    LOG.log(Level.SEVERE, "error occurred when remote connection invoking method");
+                                    LOG.log(Level.SEVERE, null, new Exception("error occurred when remote connection invoking method"));
                                     break;
                                 case RESPOND_ID_UPDATE_FAILED:
-                                    LOG.log(Level.SEVERE, "respond id update failed");
+                                    LOG.log(Level.SEVERE, null, new Exception("respond id update failed"));
                                     break;
                             }
                             request.requestFailed = true;
                         } else {
-                            LOG.log(Level.SEVERE, "size of the respond list is incorrect");
+                            LOG.log(Level.SEVERE, null, new Exception("size of the respond list is incorrect"));
                             return;
                         }
                     }
@@ -451,6 +451,9 @@ public class RPC<T> implements RemoteInput, Closeable {
         if (out != null) {
             out.close();
         }
+        if (userObject != null) {
+            rpcRegistry.remove(userObject);
+        }
         rpcRegistry.remove(this);
         synchronized (listeners) {
             for (RPCListener listener : listeners) {
@@ -512,12 +515,16 @@ public class RPC<T> implements RemoteInput, Closeable {
             args[broadcastListIndex] = null;
 
             for (Object _userObject : broadcastList) {
-                RPC<T> _rpc = rpcRegistry.get(_userObject);
+                RPC<?> _rpc = rpcRegistry.get(_userObject);
                 if (_rpc == null) {
                     continue;
                 }
                 _rpc.send(requestTypeId, args, respond, false, false);
             }
+            return null;
+        }
+
+        if (out == null) {
             return null;
         }
 
@@ -590,9 +597,6 @@ public class RPC<T> implements RemoteInput, Closeable {
                 }
                 if (request.requestFailed) {
                     throw new IOException("Request failed due to unsynchronized class registration on local and remote connection");
-                }
-                if (request.respond instanceof List) {
-                    throw new InvocationFailedException("Remote method invoke failed");
                 }
                 return request.respond;
             }

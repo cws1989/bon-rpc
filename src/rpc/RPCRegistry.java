@@ -41,7 +41,7 @@ import rpc.exception.ConditionConflictException;
 /**
  * @author Chan Wai Shing <cws1989@gmail.com>
  */
-public class RPCRegistry<T> {
+public class RPCRegistry {
 
     private static final Logger LOG = Logger.getLogger(RPCRegistry.class.getName());
     protected final List<RPCRegistryMethod> localMethodRegistry;
@@ -51,8 +51,8 @@ public class RPCRegistry<T> {
     //
     protected Runnable retryTask;
     protected Thread retryThread;
-    protected final List<RPC<T>> rpcList;
-    protected final Map<Object, RPC<T>> userObjectRPCMap;
+    protected final List<RPC<?>> rpcList;
+    protected final Map<Object, RPC<?>> userObjectRPCMap;
 
     public RPCRegistry() {
         localMethodRegistry = new ArrayList<RPCRegistryMethod>();
@@ -60,8 +60,8 @@ public class RPCRegistry<T> {
         registeredLocalClasses = new HashMap<Class<?>, Integer>();
         registeredRemoteClasses = new HashMap<Class<?>, Integer>();
 
-        rpcList = Collections.synchronizedList(new ArrayList<RPC<T>>());
-        userObjectRPCMap = Collections.synchronizedMap(new HashMap<Object, RPC<T>>());
+        rpcList = Collections.synchronizedList(new ArrayList<RPC<?>>());
+        userObjectRPCMap = Collections.synchronizedMap(new HashMap<Object, RPC<?>>());
         retryTask = new Runnable() {
 
             @Override
@@ -79,8 +79,8 @@ public class RPCRegistry<T> {
                     synchronized (RPCRegistry.this) {
                         long currentTime = System.currentTimeMillis();
 
-                        RPC<T>[] rpcArray = rpcList.toArray(new RPC[rpcList.size()]);
-                        for (RPC<T> rpc : rpcArray) {
+                        RPC<?>[] rpcArray = rpcList.toArray(new RPC[rpcList.size()]);
+                        for (RPC<?> rpc : rpcArray) {
                             if (rpc.out == null) {
                                 continue;
                             }
@@ -205,25 +205,36 @@ public class RPCRegistry<T> {
         registeredRemoteClasses.clear();
     }
 
-    protected void put(Object userObject, RPC<T> rpc) {
+    protected void put(Object userObject, RPC<?> rpc) {
         userObjectRPCMap.put(userObject, rpc);
     }
 
-    protected RPC<T> remove(Object userObject) {
+    protected RPC<?> remove(Object userObject) {
         return userObjectRPCMap.remove(userObject);
     }
 
-    protected RPC<T> get(Object userObject) {
+    protected RPC<?> get(Object userObject) {
         return userObjectRPCMap.get(userObject);
     }
 
-    protected void remove(RPC<T> rpc) {
+    protected void remove(RPC<?> rpc) {
         rpcList.remove(rpc);
     }
 
-    public RPC<T> getRPC() throws NotFoundException, CannotCompileException, InstantiationException, IllegalAccessException {
+    public <T> RPC<T> getRPC(Class<T> clazz) throws NotFoundException, CannotCompileException, InstantiationException, IllegalAccessException, ConditionConflictException {
         RPC<T> rpc = new RPC<T>(this, new ArrayList<RPCRegistryMethod>(localMethodRegistry), new ArrayList<RPCRegistryMethod>(remoteMethodRegistry),
                 new HashMap<Class<?>, Integer>(registeredLocalClasses), new HashMap<Class<?>, Integer>(registeredRemoteClasses));
+        for (RPCRegistryMethod rpcMethod : localMethodRegistry) {
+            Class<?> argumentClass = null;
+            if (rpcMethod.broadcast
+                    && !clazz.isAssignableFrom(argumentClass = rpcMethod.method.getParameterTypes()[(rpcMethod.userObject ? 1 : 0)].getComponentType())) {
+                throw new ConditionConflictException(String.format("The object class of broadcast list should be %1$s but found %2$s", clazz.getName(), argumentClass.getName()));
+            }
+            if (rpcMethod.userObject
+                    && !clazz.isAssignableFrom(argumentClass = rpcMethod.method.getParameterTypes()[0])) {
+                throw new ConditionConflictException(String.format("The object class of userObject should be %1$s but found %2$s", clazz.getName(), argumentClass.getName()));
+            }
+        }
         rpcList.add(rpc);
         return rpc;
     }

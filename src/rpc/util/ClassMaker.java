@@ -104,10 +104,10 @@ public class ClassMaker {
 
             // Object[] objects = new Object[]{(casting) param1, (casting) param2, ...};
             // or Object[] objects = null;
-            if (parameterCount != 1) {
+            int startIndex = userObject ? 2 : 1;
+            if (parameterCount != 1 && startIndex < parameterCount) {
                 methodBody.append("\t");
                 methodBody.append("Object[] objects = new Object[]{");
-                int startIndex = userObject ? 2 : 1;
                 for (int i = startIndex; i < parameterCount; i++) {
                     if (i != startIndex) {
                         methodBody.append(", ");
@@ -234,7 +234,7 @@ public class ClassMaker {
         }
     }
 
-    public static <T> T makeInstance(Class<T> objClass, Class<?> rpcClass, RPC rpc) throws NotFoundException, CannotCompileException, InstantiationException, IllegalAccessException {
+    public static <T> T makeInstance(Class<T> objClass, Class<?> rpcClass, RPC<?> rpc) throws NotFoundException, CannotCompileException, InstantiationException, IllegalAccessException {
         Class<?> instanceClass = makeClass(objClass, rpcClass);
         T instance = objClass.cast(instanceClass.newInstance());
         ((ClassMakerRPCInterface) instance).setRPC(rpc);
@@ -243,6 +243,6 @@ public class ClassMaker {
 
     protected interface ClassMakerRPCInterface {
 
-        void setRPC(RPC rpc);
+        void setRPC(RPC<?> rpc);
     }
 }

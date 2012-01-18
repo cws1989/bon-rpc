@@ -27,5 +27,5 @@ public interface ServerInterface {
 
     @Blocking()
     @RequestTypeId(7)
-    void eval();
+    List<Object> eval();
 }
