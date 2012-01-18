@@ -79,11 +79,7 @@ public class RPCRegistry<T> {
                     synchronized (RPCRegistry.this) {
                         long currentTime = System.currentTimeMillis();
 
-                        RPC<T>[] rpcArray = null;
-                        synchronized (rpcList) {
-                            rpcArray = rpcList.toArray(new RPC[rpcList.size()]);
-                        }
-
+                        RPC<T>[] rpcArray = rpcList.toArray(new RPC[rpcList.size()]);
                         for (RPC<T> rpc : rpcArray) {
                             if (rpc.out == null) {
                                 continue;
