@@ -1,5 +1,6 @@
 package rpc.RPCTestPackage;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -28,6 +29,10 @@ public class ServerInterfaceImplementation implements ServerInterface {
     }
 
     @Override
-    public void eval() {
+    public List<Object> eval() {
+        List<Object> returnList = new ArrayList<Object>();
+        returnList.add(1);
+        returnList.add("eval");
+        return returnList;
     }
 }
