@@ -243,18 +243,18 @@ public class RPCTest {
         serverRPC.setRemoteOutput(serverToClientSimulator);
         clientRPC.setRemoteOutput(clientToServerSimulator);
 
-        serverToClientSimulator.addReceiveError(0, Simulator.ErrorMode.CONTENT, 5);
-        clientToServerSimulator.addReceiveError(0, Simulator.ErrorMode.CONTENT, 5);
-        serverToClientSimulator.addReceiveError(1, Simulator.ErrorMode.DISCARD, 0);
-        clientToServerSimulator.addReceiveError(1, Simulator.ErrorMode.DISCARD, 0);
-        serverToClientSimulator.addReceiveError(2, Simulator.ErrorMode.HEAD, 5);
-        clientToServerSimulator.addReceiveError(2, Simulator.ErrorMode.HEAD, 5);
-        serverToClientSimulator.addReceiveError(3, Simulator.ErrorMode.TAIL, 5);
-        clientToServerSimulator.addReceiveError(3, Simulator.ErrorMode.TAIL, 5);
+//        serverToClientSimulator.addReceiveError(0, Simulator.ErrorMode.CONTENT, 5);
+//        clientToServerSimulator.addReceiveError(0, Simulator.ErrorMode.CONTENT, 5);
+//        serverToClientSimulator.addReceiveError(1, Simulator.ErrorMode.DISCARD, 0);
+//        clientToServerSimulator.addReceiveError(1, Simulator.ErrorMode.DISCARD, 0);
+//        serverToClientSimulator.addReceiveError(2, Simulator.ErrorMode.HEAD, 5);
+//        clientToServerSimulator.addReceiveError(2, Simulator.ErrorMode.HEAD, 5);
+//        serverToClientSimulator.addReceiveError(3, Simulator.ErrorMode.TAIL, 5);
+//        clientToServerSimulator.addReceiveError(3, Simulator.ErrorMode.TAIL, 5);
 
 
         // get the remote object
-        ServerInterface serverInterface = clientRPC.getRemote(ServerInterface.class);
+        final ServerInterface serverInterface = clientRPC.getRemote(ServerInterface.class);
         ServerInterface2 serverInterface2 = clientRPC.getRemote(ServerInterface2.class);
         ClientInterface clientInterface = serverRPC.getRemote(ClientInterface.class);
         ClientInterface2 clientInterface2 = serverRPC.getRemote(ClientInterface2.class);
@@ -270,11 +270,68 @@ public class RPCTest {
         serverInterface.get(1);
         serverInterface.eval();
         serverInterface2.abc();
-        for (int i = 0; i < 10000; i++) {
+        Thread thread1 = new Thread(new Runnable() {
+
+            @Override
+            public void run() {
+                for (int i = 0; i < 100000; i++) {
+                    List<Object> list = serverInterface.eval();
+                    assertEquals(1, list.get(0));
+                    assertEquals("eval", list.get(1));
+                }
+            }
+        });
+        thread1.start();
+        Thread thread2 = new Thread(new Runnable() {
+
+            @Override
+            public void run() {
+                for (int i = 100000, iEnd = i + 100000; i < iEnd; i++) {
+                    assertEquals(i, serverInterface.eval(i), 0.0F);
+                }
+            }
+        });
+        thread2.start();
+        Thread thread3 = new Thread(new Runnable() {
+
+            @Override
+            public void run() {
+                for (int i = 200000, iEnd = i + 100000; i < iEnd; i++) {
+                    assertEquals(i, serverInterface.eval(i), 0.0F);
+                }
+            }
+        });
+        thread3.start();
+        Thread thread4 = new Thread(new Runnable() {
+
+            @Override
+            public void run() {
+                for (int i = 300000, iEnd = i + 100000; i < iEnd; i++) {
+                    assertEquals(i, serverInterface.eval(i), 0.0F);
+                }
+            }
+        });
+        thread4.start();
+        Thread thread5 = new Thread(new Runnable() {
+
+            @Override
+            public void run() {
+                for (int i = 400000, iEnd = i + 100000; i < iEnd; i++) {
+                    assertEquals(i, serverInterface.eval(i), 0.0F);
+                }
+            }
+        });
+        thread5.start();
+        for (int i = 0; i < 100000; i++) {
             List<Object> list = serverInterface.eval();
             assertEquals(1, list.get(0));
             assertEquals("eval", list.get(1));
         }
+        thread1.join();
+        thread2.join();
+        thread3.join();
+        thread4.join();
+        thread5.join();
 
 
         assertTrue(ArgumentsAssert.finish());

@@ -364,7 +364,7 @@ public class RPC<T> implements RemoteInput, Closeable {
                                 }
 
                                 RPCRequest _rpcRequest;
-                                while ((_rpcRequest = _respondList.remove(_idSet.id)) != null) {
+                                while ((_rpcRequest = _respondList.get(_idSet.id)) != null) {
                                     _idSet.id++;
                                     if (_idSet.id > 1073741823) {
                                         _idSet.id = 1;
@@ -573,18 +573,21 @@ public class RPC<T> implements RemoteInput, Closeable {
             throw new IOException("RemoteOutput is not set");
         }
 
-        out.write(packetData);
-
+        RPCRequest request = null;
         if (respond) {
-            RPCRequest request = new RPCRequest(requestId, System.currentTimeMillis(), packetData);
+            request = new RPCRequest(requestId, System.currentTimeMillis(), packetData);
             if (!requestList.containsKey(requestId)) {
                 requestList.put(requestId, request);
             }
+        }
 
+        if (respond) {
             if (!blocking) {
+                out.write(packetData);
                 return null;
             } else {
                 synchronized (request) {
+                    out.write(packetData);
                     try {
                         request.wait();
                     } catch (InterruptedException ex) {
@@ -601,6 +604,7 @@ public class RPC<T> implements RemoteInput, Closeable {
                 return request.respond;
             }
         } else {
+            out.write(packetData);
             return null;
         }
     }
@@ -622,7 +626,7 @@ public class RPC<T> implements RemoteInput, Closeable {
                     return new Object[]{null, RPCError.REMOTE_CONNECTION_SEQUENTIAL_ID_NOT_REGISTERED.getValue()};
                 }
 
-                if (_targetRespondedId < _idSet.respondedId) {
+                if (_targetRespondedId + 1 < _idSet.respondedId) {
                     return new Object[]{null, RPCError.RESPOND_ID_UPDATE_FAILED.getValue()};
                 }
                 for (int i = _idSet.respondedId; i <= _targetRespondedId; i++) {
