@@ -25,7 +25,7 @@ public class ServerInterfaceImplementation implements ServerInterface {
 
     @Override
     public Double eval(double x) {
-        return null;
+        return x;
     }
 
     @Override

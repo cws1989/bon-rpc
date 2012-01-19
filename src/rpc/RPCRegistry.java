@@ -103,7 +103,7 @@ public class RPCRegistry {
                                         _idSet.lastRespondId = 0;
                                         _idSet.lastRespondIdSendTime = currentTime;
                                     }
-                                    if (lastRespondReceivedId - _idSet.lastRespondId > 100 || currentTime - _idSet.lastRespondIdSendTime > 30000) {
+                                    if (lastRespondReceivedId - _idSet.lastRespondId > 100 || currentTime - _idSet.lastRespondIdSendTime > 10000) {
                                         Object[] sendObject = _idSet.sequentialId == -1 ? new Object[]{lastRespondReceivedId} : new Object[]{_idSet.sequentialId, lastRespondReceivedId};
                                         rpc.send(0, sendObject, true, false, false);
                                         _idSet.lastRespondId = lastRespondReceivedId;
