@@ -543,7 +543,7 @@ public class RPC<T> implements RemoteInput, Closeable {
         synchronized (_idSet) {
             while (requestId == 0 || _requestList.get(requestId) != null) {
                 requestId = _idSet.id++;
-                if (requestId > 1073741823) {
+                if (_idSet.id > 1073741823) {
                     _idSet.id = 1;
                 }
             }

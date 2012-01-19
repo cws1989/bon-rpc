@@ -27,10 +27,20 @@ import rpc.exception.ConditionConflictException;
 public class RPCTest {
 
     private static final Logger LOG = Logger.getLogger(RPCTest.class.getName());
+    //
     protected RPCRegistry serverRPCRegistry;
     protected RPCRegistry clientRPCRegistry;
+    //
     protected Simulator serverToClientSimulator;
     protected Simulator clientToServerSimulator;
+    //
+    protected RPC<Integer> serverRPC;
+    protected RPC<Integer> clientRPC;
+    //
+    protected ServerInterface serverInterface;
+    protected ServerInterface2 serverInterface2;
+    protected ClientInterface clientInterface;
+    protected ClientInterface2 clientInterface2;
 
     public RPCTest() {
     }
@@ -51,11 +61,41 @@ public class RPCTest {
     }
 
     @Before
-    public void setUp() {
+    public void setUp() throws Throwable {
         serverRPCRegistry = new RPCRegistry();
         clientRPCRegistry = new RPCRegistry();
-        serverToClientSimulator = null;
-        clientToServerSimulator = null;
+
+        // register and bind class
+        serverRPCRegistry.registerLocal(ServerInterface.class);
+        serverRPCRegistry.registerLocal(ServerInterface2.class);
+        serverRPCRegistry.registerRemote(ClientInterface.class);
+        serverRPCRegistry.registerRemote(ClientInterface2.class);
+        serverRPC = serverRPCRegistry.getRPC(Integer.class);
+        serverRPC.bind(ServerInterface.class, new ServerInterfaceImplementation());
+        serverRPC.bind(ServerInterface2.class, new ServerInterface2Implementation());
+        serverRPC.setUserObject(10);
+
+        clientRPCRegistry.registerRemote(ServerInterface.class);
+        clientRPCRegistry.registerRemote(ServerInterface2.class);
+        clientRPCRegistry.registerLocal(ClientInterface.class);
+        clientRPCRegistry.registerLocal(ClientInterface2.class);
+        clientRPC = clientRPCRegistry.getRPC(Integer.class);
+        clientRPC.bind(ClientInterface.class, new ClientInterfaceImplementation());
+        clientRPC.bind(ClientInterface2.class, new ClientInterface2Implementation());
+
+        // direct the output to correct RPC
+        serverToClientSimulator = new Simulator(serverRPC);
+        clientToServerSimulator = new Simulator(clientRPC);
+        serverToClientSimulator.setRemoteRPC(clientToServerSimulator);
+        clientToServerSimulator.setRemoteRPC(serverToClientSimulator);
+        serverRPC.setRemoteOutput(serverToClientSimulator);
+        clientRPC.setRemoteOutput(clientToServerSimulator);
+
+        // get the remote object
+        serverInterface = clientRPC.getRemote(ServerInterface.class);
+        serverInterface2 = clientRPC.getRemote(ServerInterface2.class);
+        clientInterface = serverRPC.getRemote(ClientInterface.class);
+        clientInterface2 = serverRPC.getRemote(ClientInterface2.class);
     }
 
     @After
@@ -195,81 +235,12 @@ public class RPCTest {
     }
 
     @Test
-    public void test() throws Throwable {
-        System.out.println("+++++ test +++++");
+    public void pressureTest() throws Throwable {
+        System.out.println("+++++ pressureTest +++++");
 
-//- heart beat
 //- regular send respondedId and remove requests from requestList (and for sequential also)
-//- reuse requestId
 //- annotations
 
-        Map<Integer, List<String>> _resultMap = new HashMap<Integer, List<String>>();
-        _resultMap.put(0, Arrays.asList(new String[]{"rpc test", "rpc", "test"}));
-        ArgumentsAssert.register("ljkihy", new Object[][]{new Object[]{10, _resultMap}, new Object[]{10, _resultMap}});
-
-
-        ServerInterface serverInterfaceImplementation = new ServerInterfaceImplementation() {
-
-            @Override
-            public Double ljkihy(Integer userObject, Map<Integer, List<String>> test) {
-                ArgumentsAssert.assertAnyMatch("ljkihy", userObject, test);
-                return (double) 1.0F;
-            }
-        };
-
-        serverRPCRegistry.registerLocal(ServerInterface.class);
-        serverRPCRegistry.registerLocal(ServerInterface2.class);
-        serverRPCRegistry.registerRemote(ClientInterface.class);
-        serverRPCRegistry.registerRemote(ClientInterface2.class);
-        RPC<Integer> serverRPC = serverRPCRegistry.getRPC(Integer.class);
-        serverRPC.bind(ServerInterface.class, serverInterfaceImplementation);
-        serverRPC.bind(ServerInterface2.class, new ServerInterface2Implementation());
-        serverRPC.setUserObject(10);
-
-        clientRPCRegistry.registerRemote(ServerInterface.class);
-        clientRPCRegistry.registerRemote(ServerInterface2.class);
-        clientRPCRegistry.registerLocal(ClientInterface.class);
-        clientRPCRegistry.registerLocal(ClientInterface2.class);
-        RPC<Integer> clientRPC = clientRPCRegistry.getRPC(Integer.class);
-        clientRPC.bind(ClientInterface.class, new ClientInterfaceImplementation());
-        clientRPC.bind(ClientInterface2.class, new ClientInterface2Implementation());
-
-
-        // direct the output to correct RPC
-        serverToClientSimulator = new Simulator(serverRPC);
-        clientToServerSimulator = new Simulator(clientRPC);
-        serverToClientSimulator.setRemoteRPC(clientToServerSimulator);
-        clientToServerSimulator.setRemoteRPC(serverToClientSimulator);
-        serverRPC.setRemoteOutput(serverToClientSimulator);
-        clientRPC.setRemoteOutput(clientToServerSimulator);
-
-//        serverToClientSimulator.addReceiveError(0, Simulator.ErrorMode.CONTENT, 5);
-//        clientToServerSimulator.addReceiveError(0, Simulator.ErrorMode.CONTENT, 5);
-//        serverToClientSimulator.addReceiveError(1, Simulator.ErrorMode.DISCARD, 0);
-//        clientToServerSimulator.addReceiveError(1, Simulator.ErrorMode.DISCARD, 0);
-//        serverToClientSimulator.addReceiveError(2, Simulator.ErrorMode.HEAD, 5);
-//        clientToServerSimulator.addReceiveError(2, Simulator.ErrorMode.HEAD, 5);
-//        serverToClientSimulator.addReceiveError(3, Simulator.ErrorMode.TAIL, 5);
-//        clientToServerSimulator.addReceiveError(3, Simulator.ErrorMode.TAIL, 5);
-
-
-        // get the remote object
-        final ServerInterface serverInterface = clientRPC.getRemote(ServerInterface.class);
-        ServerInterface2 serverInterface2 = clientRPC.getRemote(ServerInterface2.class);
-        ClientInterface clientInterface = serverRPC.getRemote(ClientInterface.class);
-        ClientInterface2 clientInterface2 = serverRPC.getRemote(ClientInterface2.class);
-
-
-        // remote procedure call start
-        clientInterface.notifyClient(new Integer[]{10});
-
-        Map<Integer, List<String>> map = new HashMap<Integer, List<String>>();
-        map.put(0, Arrays.asList(new String[]{"rpc test", "rpc", "test"}));
-        assertEquals(1.0F, serverInterface.ljkihy(0, map), 0F);
-        assertEquals(1.0F, serverInterface.ljkihy(0, map), 0F);
-        serverInterface.get(1);
-        serverInterface.eval();
-        serverInterface2.abc();
         Thread thread1 = new Thread(new Runnable() {
 
             @Override
@@ -332,8 +303,69 @@ public class RPCTest {
         thread3.join();
         thread4.join();
         thread5.join();
+    }
+
+    @Test
+    public void errorCorrectingTest() throws Throwable {
+        System.out.println("+++++ errorCorrectingTest +++++");
+
+        Map<Integer, List<String>> _resultMap = new HashMap<Integer, List<String>>();
+        _resultMap.put(0, Arrays.asList(new String[]{"rpc test", "rpc", "test"}));
+        ArgumentsAssert.register("ljkihy", new Object[][]{new Object[]{10, _resultMap}, new Object[]{10, _resultMap}});
+
+        ServerInterface serverInterfaceImplementation = new ServerInterfaceImplementation() {
+
+            @Override
+            public Double ljkihy(Integer userObject, Map<Integer, List<String>> test) {
+                ArgumentsAssert.assertAnyMatch("ljkihy", userObject, test);
+                return (double) 1.0F;
+            }
+        };
+
+        serverRPC.bind(ServerInterface.class, serverInterfaceImplementation);
+
+        serverToClientSimulator.addReceiveError(0, Simulator.ErrorMode.CONTENT, 5);
+        clientToServerSimulator.addReceiveError(0, Simulator.ErrorMode.CONTENT, 5);
+        serverToClientSimulator.addReceiveError(1, Simulator.ErrorMode.DISCARD, 0);
+        clientToServerSimulator.addReceiveError(1, Simulator.ErrorMode.DISCARD, 0);
+        serverToClientSimulator.addReceiveError(2, Simulator.ErrorMode.HEAD, 5);
+        clientToServerSimulator.addReceiveError(2, Simulator.ErrorMode.HEAD, 5);
+        serverToClientSimulator.addReceiveError(3, Simulator.ErrorMode.TAIL, 5);
+        clientToServerSimulator.addReceiveError(3, Simulator.ErrorMode.TAIL, 5);
+
+
+        clientInterface.notifyClient(new Integer[]{10});
+
+        Map<Integer, List<String>> map = new HashMap<Integer, List<String>>();
+        map.put(0, Arrays.asList(new String[]{"rpc test", "rpc", "test"}));
+        assertEquals(1.0F, serverInterface.ljkihy(0, map), 0F);
+        assertEquals(1.0F, serverInterface.ljkihy(0, map), 0F);
 
 
         assertTrue(ArgumentsAssert.finish());
+    }
+
+    @Test
+    public void reuseRequestId_heartBeat() throws Throwable {
+        System.out.println("+++++ reuseRequestId_heartBeat +++++");
+
+        // reuse requestId
+        clientRPC.requestIdSet.id = 1073741822;
+        serverInterface.test();
+        assertEquals(1073741823, clientRPC.requestIdSet.id);
+        serverInterface.test();
+        assertEquals(1, clientRPC.requestIdSet.id);
+        for (int i = 0; i < 122; i++) {
+            assertEquals(i, serverInterface.eval(i), 0.0F);
+        }
+        assertEquals(123, clientRPC.requestIdSet.id);
+
+        assertEquals(2, clientRPC.requestList.size());
+
+        // heart beat
+        serverRPCRegistry.heartBeatSendInterval = 1000;
+        serverRPCRegistry.workerInterval = 1000;
+        Thread.sleep(2500); // may set to 2600 which is slightly larger than the default workerInterval (2500)
+        assertTrue((System.currentTimeMillis() - clientRPC.lastPacketReceiveTime) < 2000);
     }
 }
