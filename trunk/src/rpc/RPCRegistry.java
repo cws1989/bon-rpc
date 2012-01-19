@@ -53,8 +53,22 @@ public class RPCRegistry {
     protected Thread retryThread;
     protected final List<RPC<?>> rpcList;
     protected final Map<Object, RPC<?>> userObjectRPCMap;
+    //
+    protected int respondedIdSendInterval;
+    //
+    protected int heartBeatSendInterval;
+    protected int heartBeatExpiryInterval;
+    //
+    protected int workerInterval;
 
     public RPCRegistry() {
+        respondedIdSendInterval = 10000;
+
+        heartBeatSendInterval = 10000;
+        heartBeatExpiryInterval = 35000;
+
+        workerInterval = 2500;
+
         localMethodRegistry = new ArrayList<RPCRegistryMethod>();
         remoteMethodRegistry = new ArrayList<RPCRegistryMethod>();
         registeredLocalClasses = new HashMap<Class<?>, Integer>();
@@ -103,7 +117,7 @@ public class RPCRegistry {
                                         _idSet.lastRespondId = 0;
                                         _idSet.lastRespondIdSendTime = currentTime;
                                     }
-                                    if (lastRespondReceivedId - _idSet.lastRespondId > 100 || currentTime - _idSet.lastRespondIdSendTime > 10000) {
+                                    if (lastRespondReceivedId - _idSet.lastRespondId > 100 || currentTime - _idSet.lastRespondIdSendTime > respondedIdSendInterval) {
                                         Object[] sendObject = _idSet.sequentialId == -1 ? new Object[]{lastRespondReceivedId} : new Object[]{_idSet.sequentialId, lastRespondReceivedId};
                                         rpc.send(0, sendObject, true, false, false);
                                         _idSet.lastRespondId = lastRespondReceivedId;
@@ -142,13 +156,13 @@ public class RPCRegistry {
 
                             //<editor-fold defaultstate="collapsed" desc="heart beat">
                             long lastReceiveTimeDiff = currentTime - rpc.lastPacketReceiveTime;
-                            if (lastReceiveTimeDiff > 35000) {
+                            if (lastReceiveTimeDiff > heartBeatExpiryInterval) {
                                 try {
                                     rpc.close();
                                 } catch (IOException ex) {
                                     LOG.log(Level.SEVERE, null, ex);
                                 }
-                            } else if (lastReceiveTimeDiff > 10000 && currentTime - rpc.lastHeartBeatSendTime > 10000) {
+                            } else if (lastReceiveTimeDiff > heartBeatSendInterval && currentTime - rpc.lastHeartBeatSendTime > heartBeatSendInterval) {
                                 try {
                                     rpc.send(0, new Object[]{null}, true, false, false);
                                     rpc.lastHeartBeatSendTime = currentTime;
@@ -159,7 +173,7 @@ public class RPCRegistry {
                             //</editor-fold>
                         }
 
-                        sleepTime = Math.max(0, 2500 - (System.currentTimeMillis() - currentTime));
+                        sleepTime = Math.max(0, workerInterval - (System.currentTimeMillis() - currentTime));
                     }
 
                     try {
@@ -175,6 +189,38 @@ public class RPCRegistry {
             }
         };
         start();
+    }
+
+    public int getRespondedIdSendInterval() {
+        return respondedIdSendInterval;
+    }
+
+    public void setRespondedIdSendInterval(int respondedIdSendInterval) {
+        this.respondedIdSendInterval = respondedIdSendInterval;
+    }
+
+    public int getHeartBeatSendInterval() {
+        return heartBeatSendInterval;
+    }
+
+    public void setHeartBeatSendInterval(int heartBeatSendInterval) {
+        this.heartBeatSendInterval = heartBeatSendInterval;
+    }
+
+    public int getHeartBeatExpiryInterval() {
+        return heartBeatExpiryInterval;
+    }
+
+    public void setHeartBeatExpiryInterval(int heartBeatExpiryInterval) {
+        this.heartBeatExpiryInterval = heartBeatExpiryInterval;
+    }
+
+    public int getWorkerInterval() {
+        return workerInterval;
+    }
+
+    public void setWorkerInterval(int workerInterval) {
+        this.workerInterval = workerInterval;
     }
 
     public void start() {
