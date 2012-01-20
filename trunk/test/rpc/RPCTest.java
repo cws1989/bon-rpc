@@ -395,4 +395,38 @@ public class RPCTest {
         assertTrue(serverRPC.respondList.isEmpty());
         assertEquals(2, serverRPC.respondIdSet.respondedId);
     }
+
+    @Test
+    public void regularSendSequentialRespondIdTest() throws Throwable {
+        System.out.println("+++++ regularSendSequentialRespondIdTest +++++");
+
+        serverInterface.testSequential();
+        serverInterface.testSequential();
+
+        assertFalse(serverRPC._sequentialRespondList[1].isEmpty());
+        assertFalse(serverRPC.sequentialRespondList[2].isEmpty());
+        Thread.sleep(3600);
+        assertFalse(serverRPC._sequentialRespondList[1].isEmpty());
+        assertFalse(serverRPC.sequentialRespondList[2].isEmpty());
+        assertEquals(1, serverRPC._sequentialRespondIdSet[1].respondedId);
+        assertEquals(1, serverRPC.sequentialRespondIdSet[2].respondedId);
+    }
+
+    @Test
+    public void regularSendSequentialRespondIdTest2() throws Throwable {
+        System.out.println("+++++ regularSendSequentialRespondIdTest2 +++++");
+
+        clientRPCRegistry.setRespondedIdSendInterval(1000);
+
+        serverInterface.testSequential();
+        serverInterface.testSequential();
+
+        assertFalse(serverRPC._sequentialRespondList[1].isEmpty());
+        assertFalse(serverRPC.sequentialRespondList[2].isEmpty());
+        Thread.sleep(3600);
+        assertTrue(serverRPC._sequentialRespondList[1].isEmpty());
+        assertTrue(serverRPC.sequentialRespondList[2].isEmpty());
+        assertEquals(2, serverRPC._sequentialRespondIdSet[1].respondedId);
+        assertEquals(2, serverRPC.sequentialRespondIdSet[2].respondedId);
+    }
 }
