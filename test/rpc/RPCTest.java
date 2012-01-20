@@ -238,7 +238,6 @@ public class RPCTest {
     public void pressureTest() throws Throwable {
         System.out.println("+++++ pressureTest +++++");
 
-//- regular send respondedId and remove requests from requestList (and for sequential also)
 //- annotations
 
         Thread thread1 = new Thread(new Runnable() {
@@ -346,8 +345,8 @@ public class RPCTest {
     }
 
     @Test
-    public void reuseRequestId_heartBeat() throws Throwable {
-        System.out.println("+++++ reuseRequestId_heartBeat +++++");
+    public void reuseRequestId_heartBeat_Test() throws Throwable {
+        System.out.println("+++++ reuseRequestId_heartBeat_Test +++++");
 
         // reuse requestId
         clientRPC.requestIdSet.id = 1073741822;
@@ -367,5 +366,33 @@ public class RPCTest {
         serverRPCRegistry.workerInterval = 1000;
         Thread.sleep(2500); // may set to 2600 which is slightly larger than the default workerInterval (2500)
         assertTrue((System.currentTimeMillis() - clientRPC.lastPacketReceiveTime) < 2000);
+    }
+
+    @Test
+    public void regularSendRespondIdTest() throws Throwable {
+        System.out.println("+++++ regularSendRespondIdTest +++++");
+
+        serverInterface.test();
+        serverInterface.test();
+
+        assertFalse(serverRPC.respondList.isEmpty());
+        Thread.sleep(3600);
+        assertFalse(serverRPC.respondList.isEmpty());
+        assertEquals(1, serverRPC.respondIdSet.respondedId);
+    }
+
+    @Test
+    public void regularSendRespondIdTest2() throws Throwable {
+        System.out.println("+++++ regularSendRespondIdTest2 +++++");
+
+        clientRPCRegistry.setRespondedIdSendInterval(1000);
+
+        serverInterface.test();
+        serverInterface.test();
+
+        assertFalse(serverRPC.respondList.isEmpty());
+        Thread.sleep(3600);
+        assertTrue(serverRPC.respondList.isEmpty());
+        assertEquals(2, serverRPC.respondIdSet.respondedId);
     }
 }
