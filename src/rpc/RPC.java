@@ -637,7 +637,7 @@ public class RPC<T> implements RemoteInput, Closeable {
                 // respondId notification, no sequential id
                 int _targetRespondedId = (Integer) args[0];
 
-                if (_targetRespondedId < respondIdSet.respondedId) {
+                if (_targetRespondedId + 1 < respondIdSet.respondedId) {
                     return new Object[]{null, RPCError.RESPOND_ID_UPDATE_FAILED.getValue()};
                 }
                 for (int i = respondIdSet.respondedId; i <= _targetRespondedId; i++) {

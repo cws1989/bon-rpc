@@ -1,5 +1,6 @@
 package rpc.RPCTestPackage;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +12,10 @@ public class ServerInterfaceImplementation implements ServerInterface {
 
     @Override
     public void test() {
+    }
+
+    @Override
+    public void testSequential() throws IOException {
     }
 
     @Override
