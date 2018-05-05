@@ -303,6 +303,7 @@ public class RPC<T> implements RemoteInput, Closeable {
                     request.respond = contentList.get(0);
                     request.responded = true;
                     synchronized (request) {
+                        request.notified = true;
                         request.notifyAll();
                     }
 
@@ -474,6 +475,7 @@ public class RPC<T> implements RemoteInput, Closeable {
                 for (RPCRequest _request : _requestList.values()) {
                     if (!_request.responded) {
                         synchronized (_request) {
+                            _request.notified = true;
                             _request.notifyAll();
                         }
                     }
@@ -588,11 +590,13 @@ public class RPC<T> implements RemoteInput, Closeable {
             } else {
                 synchronized (request) {
                     out.write(packetData);
-                    try {
-                        request.wait();
-                    } catch (InterruptedException ex) {
-                        Thread.currentThread().interrupt();
-                        throw new IOException("Thread interruptted when waiting for respond");
+                    while (!request.notified) {
+                        try {
+                            request.wait();
+                        } catch (InterruptedException ex) {
+                            Thread.currentThread().interrupt();
+                            throw new IOException("Thread interruptted when waiting for respond");
+                        }
                     }
                 }
                 if (!request.responded) {
@@ -753,6 +757,7 @@ public class RPC<T> implements RemoteInput, Closeable {
         protected Object respond;
         protected boolean responded;
         protected boolean requestFailed;
+        protected boolean notified;
 
         protected RPCRequest(int requestId, long time, byte[] packetData) {
             this(0, requestId, time, packetData, null, null);
@@ -771,6 +776,7 @@ public class RPC<T> implements RemoteInput, Closeable {
             this.respond = respond;
             responded = false;
             requestFailed = false;
+            notified = false;
         }
     }
 }

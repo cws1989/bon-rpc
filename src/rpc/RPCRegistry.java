@@ -236,10 +236,12 @@ public class RPCRegistry {
     public void stop() {
         synchronized (this) {
             retryThread.interrupt();
-            try {
-                this.wait();
-            } catch (InterruptedException ex) {
-                LOG.log(Level.SEVERE, null, ex);
+            while (retryThread != null) {
+                try {
+                    this.wait();
+                } catch (InterruptedException ex) {
+                    LOG.log(Level.SEVERE, null, ex);
+                }
             }
         }
     }

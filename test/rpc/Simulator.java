@@ -94,7 +94,7 @@ public class Simulator implements RemoteInput, RemoteOutput {
                     }
 
                     synchronized (receiveQueue) {
-                        if (receiveQueue.isEmpty()) {
+                        while (receiveQueue.isEmpty()) {
                             try {
                                 receiveQueue.wait();
                             } catch (InterruptedException ex) {
@@ -129,7 +129,7 @@ public class Simulator implements RemoteInput, RemoteOutput {
                     }
 
                     synchronized (sendQueue) {
-                        if (sendQueue.isEmpty()) {
+                        while (sendQueue.isEmpty()) {
                             try {
                                 sendQueue.wait();
                             } catch (InterruptedException ex) {
